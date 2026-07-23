@@ -1,0 +1,11 @@
+services:
+  snapprint:
+    build: .
+    image: snapprint:latest
+    container_name: snapprint
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models      # 放置 AI 模式权重（离线浮雕不需要）
+      - ./outputs:/app/outputs    # 生成的 3D 文件
+    restart: unless-stopped

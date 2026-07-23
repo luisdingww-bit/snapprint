@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+*.egg
+
+# 模型权重（大文件，不入库；用 Git LFS 或外部下载）
+models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+
+# 输出产物（每次生成动态产生）
+outputs/*
+!outputs/.gitkeep
+
+# 环境与缓存
+.env
+*.log
+.DS_Store
+Thumbs.db
+.cache/
+
+# IDE
+.idea/
+.vscode/

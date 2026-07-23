@@ -1,16 +1,40 @@
 """生成后端：离线浮雕模式（零依赖、保证可跑）+ AI 模式适配层。
 
 AI 模式(Hunyuan3D / TripoSR)为「可插拔适配层」——把业界开源权重
-通过统一接口接入。运行 AI 模式需要用户自行放置权重与推理代码到 models/，
+通过统一接口接入。运行 AI 模式需要用户自备 GPU + 权重（见 docs/部署.md），
 本仓库默认提供保证可跑的离线浮雕模式。
 """
 from __future__ import annotations
 
-import io
+import os
 
 import numpy as np
 import trimesh
 from PIL import Image
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def _to_trimesh(obj) -> "trimesh.Trimesh":
+    """把不同库返回的网格对象统一成 trimesh.Trimesh。"""
+    if isinstance(obj, trimesh.Trimesh):
+        return obj
+    if isinstance(obj, trimesh.Scene):
+        return obj.dump(concatenate=True)
+    # hy3dgen 的 Mesh 包装对象，内含 .mesh
+    if hasattr(obj, "mesh") and isinstance(obj.mesh, trimesh.Trimesh):
+        return obj.mesh
+    # 裸顶点/面数组
+    if hasattr(obj, "vertices") and hasattr(obj, "faces"):
+        return trimesh.Trimesh(vertices=np.asarray(obj.vertices),
+                               faces=np.asarray(obj.faces))
+    raise TypeError(f"无法把 {type(obj)!r} 转换成 trimesh.Trimesh")
 
 
 def build_relief_mesh(
@@ -112,7 +136,7 @@ class ReliefBackend(Backend):
 
 
 class HunyuanBackend(Backend):
-    """Hunyuan3D 适配层（需自备权重 + 推理代码到 models/）。"""
+    """Hunyuan3D-2 适配层（需自备 GPU + 权重，见 docs/部署.md）。"""
     name = "hunyuan3d"
 
     def __init__(self, cfg):
@@ -120,26 +144,31 @@ class HunyuanBackend(Backend):
         self._model = None
 
     def _load(self):
-        import sys
-        sys.path.insert(0, self.cfg.model_dir)
         try:
-            from hunyuan3d_pipeline import build_pipeline
-            self._model = build_pipeline(self.cfg.model_dir)
-        except Exception as e:  # pragma: no cover
+            from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
+        except ImportError as e:  # pragma: no cover
             raise RuntimeError(
-                "AI 模式(hunyuan3d)需要把 Hunyuan3D 权重与推理代码放到 "
-                f"{self.cfg.model_dir}/ 下（参考 docs/部署.md）。原始错误: {e}"
+                "未检测到 hy3dgen。AI 模式(Hunyuan3D)需要先准备环境：\n"
+                "  1) 安装带 CUDA 的 PyTorch（按你的显卡选版本）\n"
+                "     pip install torch --index-url https://download.pytorch.org/whl/cu121\n"
+                "  2) pip install hy3dgen\n"
+                "  3) 权重会自动从 HuggingFace 拉取，或放到 models/Hunyuan3D-2\n"
+                "详见 docs/部署.md"
             ) from e
+        local = os.path.join(self.cfg.model_dir, "Hunyuan3D-2")
+        source = local if os.path.isdir(local) else "tencent/Hunyuan3D-2"
+        self._model = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(source)
 
     def generate(self, image: "Image.Image", **kwargs) -> "trimesh.Trimesh":
         if self._model is None:
             self._load()
-        mesh = self._model.image_to_mesh(image)
-        return mesh
+        steps = int(kwargs.get("steps", self.cfg.ai_steps))
+        out = self._model(image=image, num_inference_steps=steps)
+        return _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
 
 
 class TripoSRBackend(Backend):
-    """TripoSR 适配层（轻量、快速，需自备权重到 models/）。"""
+    """TripoSR 适配层（轻量快速，需自备 GPU + 权重，见 docs/部署.md）。"""
     name = "triposr"
 
     def __init__(self, cfg):
@@ -148,20 +177,39 @@ class TripoSRBackend(Backend):
 
     def _load(self):
         import sys
-        sys.path.insert(0, self.cfg.model_dir)
+        repo = os.path.join(self.cfg.model_dir, "TripoSR")
+        if os.path.isdir(repo):
+            sys.path.insert(0, repo)
         try:
-            from tsr_pipeline import build_pipeline
-            self._model = build_pipeline(self.cfg.model_dir)
-        except Exception as e:  # pragma: no cover
+            from tsr.system import TSR
+        except ImportError as e:  # pragma: no cover
             raise RuntimeError(
-                "AI 模式(triposr)需要把 TripoSR 权重与推理代码放到 "
-                f"{self.cfg.model_dir}/ 下。原始错误: {e}"
+                "未检测到 TripoSR。AI 模式(TripoSR)需要：\n"
+                "  git clone https://github.com/stabilityai/TripoSR models/TripoSR\n"
+                "  并安装其 requirements.txt（含 PyTorch+CUDA）\n"
+                "详见 docs/部署.md"
             ) from e
+        self._model = TSR.from_pretrained(
+            "stabilityai/TripoSR", config_name="config.yaml", weight_name="model.ckpt"
+        )
+        dev = self.cfg.ai_device
+        if dev == "auto":
+            dev = "cuda" if _cuda_available() else "cpu"
+        self._model.to(dev)
 
     def generate(self, image: "Image.Image", **kwargs) -> "trimesh.Trimesh":
         if self._model is None:
             self._load()
-        return self._model.image_to_mesh(image)
+        # TripoSR 推荐先做去背景 + 前景缩放
+        try:
+            from tsr.utils import remove_background, resize_foreground
+            img = remove_background(image.convert("RGB"))
+            img = resize_foreground(img, 0.85)
+        except Exception:
+            img = image.resize((512, 512))
+        arr = np.asarray(img)
+        out = self._model.reconstruct([arr], batch_size=1)
+        return _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
 
 
 def get_backend(mode: str, cfg):

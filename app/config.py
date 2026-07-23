@@ -31,5 +31,9 @@ class SnapConfig:
     # 模型权重/推理代码所在目录（需用户自行放置开源权重）
     model_dir: str = "models"
 
+    # AI 模式推理参数
+    ai_steps: int = 50                 # 扩散步数（质量 vs 速度）
+    ai_device: str = "auto"           # auto | cuda | cpu
+
 
 DEFAULT_CONFIG = SnapConfig()

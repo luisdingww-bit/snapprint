@@ -135,6 +135,84 @@
     return buf;
   }
 
+  /** 二进制 GLB (glTF 2.0)：Z-up毫米 → Y-up米，带顶点色(COLOR_0)。
+   *  手机/Windows"3D查看器"/网页 <model-viewer>/AR 可直接打开 */
+  function exportGLB(V, F, C) {
+    var n = V.length, nf = F.length;
+    // 索引 (uint32)
+    var idx = new Uint32Array(nf * 3);
+    for (var i = 0; i < nf; i++) { idx[i*3] = F[i][0]; idx[i*3+1] = F[i][1]; idx[i*3+2] = F[i][2]; }
+    // 位置：mm(Z-up) → m(Y-up)： x'=x, y'=z, z'=-y  （再整体平移由查看器处理）
+    var pos = new Float32Array(n * 3);
+    var mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (i = 0; i < n; i++) {
+      var x = V[i][0] * 0.001, y = V[i][2] * 0.001, z = -V[i][1] * 0.001;
+      pos[i*3] = x; pos[i*3+1] = y; pos[i*3+2] = z;
+      if (x < mn[0]) mn[0] = x; if (y < mn[1]) mn[1] = y; if (z < mn[2]) mn[2] = z;
+      if (x > mx[0]) mx[0] = x; if (y > mx[1]) mx[1] = y; if (z > mx[2]) mx[2] = z;
+    }
+    var hasC = !!C;
+    var col = null;
+    if (hasC) {
+      col = new Float32Array(n * 3);
+      for (i = 0; i < n; i++) { col[i*3] = C[i][0]/255; col[i*3+1] = C[i][1]/255; col[i*3+2] = C[i][2]/255; }
+    }
+    function pad4(x) { return (x + 3) & ~3; }
+    var idxBytes = idx.byteLength, posBytes = pos.byteLength, colBytes = hasC ? col.byteLength : 0;
+    var idxOff = 0, posOff = pad4(idxBytes), colOff = posOff + pad4(posBytes);
+    var binLen = colOff + pad4(colBytes);
+    var bin = new ArrayBuffer(binLen);
+    new Uint8Array(bin).set(new Uint8Array(idx.buffer), idxOff);
+    new Uint8Array(bin).set(new Uint8Array(pos.buffer), posOff);
+    if (hasC) new Uint8Array(bin).set(new Uint8Array(col.buffer), colOff);
+
+    var bufferViews = [
+      { buffer: 0, byteOffset: idxOff, byteLength: idxBytes, target: 34963 },
+      { buffer: 0, byteOffset: posOff, byteLength: posBytes, target: 34962 }
+    ];
+    var accessors = [
+      { bufferView: 0, componentType: 5125, count: nf * 3, type: "SCALAR" },
+      { bufferView: 1, componentType: 5126, count: n, type: "VEC3", min: mn, max: mx }
+    ];
+    var attributes = { POSITION: 1 };
+    if (hasC) {
+      bufferViews.push({ buffer: 0, byteOffset: colOff, byteLength: colBytes, target: 34962 });
+      accessors.push({ bufferView: 2, componentType: 5126, count: n, type: "VEC3" });
+      attributes.COLOR_0 = 2;
+    }
+    var gltf = {
+      asset: { version: "2.0", generator: "SnapPrint (browser)" },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0, name: "SnapPrint" }],
+      meshes: [{ primitives: [{ attributes: attributes, indices: 0, mode: 4, material: 0 }] }],
+      materials: [{ pbrMetallicRoughness: { metallicFactor: 0.0, roughnessFactor: 0.9 }, doubleSided: false }],
+      buffers: [{ byteLength: binLen }],
+      bufferViews: bufferViews,
+      accessors: accessors
+    };
+    var jsonStr = JSON.stringify(gltf);
+    var enc = (typeof TextEncoder !== "undefined") ? new TextEncoder().encode(jsonStr)
+              : (function(s){ var b=Buffer.from(s,"utf8"); return new Uint8Array(b.buffer,b.byteOffset,b.length); })(jsonStr);
+    var jsonLen = pad4(enc.length);
+    var total = 12 + 8 + jsonLen + 8 + binLen;
+    var out = new ArrayBuffer(total);
+    var dv = new DataView(out);
+    var u8 = new Uint8Array(out);
+    dv.setUint32(0, 0x46546C67, true);   // 'glTF'
+    dv.setUint32(4, 2, true);
+    dv.setUint32(8, total, true);
+    dv.setUint32(12, jsonLen, true);
+    dv.setUint32(16, 0x4E4F534A, true);  // 'JSON'
+    u8.set(enc, 20);
+    for (var p = 20 + enc.length; p < 20 + jsonLen; p++) u8[p] = 0x20; // 空格填充
+    var binStart = 20 + jsonLen;
+    dv.setUint32(binStart, binLen, true);
+    dv.setUint32(binStart + 4, 0x004E4942, true); // 'BIN'
+    u8.set(new Uint8Array(bin), binStart + 8);
+    return out;
+  }
+
   /** 网格统计 */
   function stats(V, F) {
     var minX = 1e9, minY = 1e9, minZ = 1e9, maxX = -1e9, maxY = -1e9, maxZ = -1e9;
@@ -160,6 +238,7 @@
     exportOBJ: exportOBJ,
     exportPLY: exportPLY,
     exportSTL: exportSTL,
+    exportGLB: exportGLB,
     stats: stats
   };
 })(typeof window !== "undefined" ? window : globalThis);

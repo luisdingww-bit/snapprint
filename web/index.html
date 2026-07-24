@@ -40,10 +40,13 @@
     .go{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;
       padding:13px;border-radius:11px;font-size:15px;font-weight:700;cursor:pointer}
     .go:disabled{opacity:.5;cursor:not-allowed}
-    .preview{height:280px;background:#0b0d11;border-radius:12px;border:1px solid var(--line);
+    .preview{height:320px;background:#0b0d11;border-radius:12px;border:1px solid var(--line);
       display:flex;align-items:center;justify-content:center;color:var(--muted);
-      font-size:13px;overflow:hidden;text-align:center}
-    .preview canvas{max-width:100%;max-height:100%}
+      font-size:13px;overflow:hidden;text-align:center;position:relative;touch-action:none}
+    .preview canvas{width:100%;height:100%;display:block;cursor:grab}
+    .preview canvas:active{cursor:grabbing}
+    .pv-tip{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--muted);
+      background:rgba(11,13,17,.7);padding:2px 8px;border-radius:6px;pointer-events:none}
     .stats{font-size:13px;margin-top:14px}
     .stats .grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:6px}
     .stats .k{color:var(--muted)}
@@ -105,7 +108,7 @@
 
     <div class="card">
       <h2>预览 & 下载</h2>
-      <div class="preview" id="preview">生成后在此显示 3D 高度预览</div>
+      <div class="preview" id="preview">生成后在此显示可旋转的 3D 模型</div>
       <div id="result" class="hidden">
         <div class="stats">
           <div>水密（可切片）：<span id="wt" class="badge"></span></div>
@@ -117,15 +120,17 @@
           </div>
         </div>
         <div class="dl">
-          <button id="dl_stl">下载 STL（推荐打印）</button>
-          <button id="dl_obj">下载 OBJ（几何）</button>
-          <button id="dl_ply">下载 PLY（带颜色）</button>
+          <button id="dl_stl">STL（推荐打印）</button>
+          <button id="dl_obj">OBJ（几何）</button>
+          <button id="dl_ply">PLY（带颜色）</button>
+          <button id="dl_glb">GLB（AR/网页/带色）</button>
         </div>
-        <div class="hint">STL 兼容所有切片软件；带颜色请用 PLY。</div>
+        <div class="hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
       </div>
     </div>
   </div>
 
+<script src="vendor/three.min.js"></script>
 <script src="app.js"></script>
 <script>
   window.addEventListener("error", function(e){
@@ -202,7 +207,7 @@
         mesh = S.buildRelief(hts, cols, rows, cls, opt);
         var st = S.stats(mesh.V, mesh.F);
         renderStats(st);
-        renderPreview(hts, cols, rows);
+        render3D(mesh);
         var ms = Math.round(performance.now() - t0);
         $("status").textContent = "完成 ✅（耗时 " + ms + " ms，全程本地计算）";
       }catch(e){
@@ -224,29 +229,112 @@
     $("verts").textContent = st.vertices.toLocaleString();
   }
 
-  /** 伪 3D 高度着色预览（自带光照的灰度浮雕渲染，零依赖） */
-  function renderPreview(hts, cols, rows){
-    var pv = $("preview"); pv.innerHTML = "";
-    var cv = document.createElement("canvas");
-    var scale = Math.min(360 / cols, 260 / rows);
-    cv.width = Math.round(cols * scale); cv.height = Math.round(rows * scale);
-    var ctx = cv.getContext("2d");
-    var im = ctx.createImageData(cv.width, cv.height);
-    for(var y = 0; y < cv.height; y++){
-      for(var x = 0; x < cv.width; x++){
-        var sr = Math.min(rows - 1, Math.floor(y / scale));
-        var sc = Math.min(cols - 1, Math.floor(x / scale));
-        var h = hts[sr * cols + sc];
-        var hr = hts[sr * cols + Math.min(cols - 1, sc + 1)];
-        var hd = hts[Math.min(rows - 1, sr + 1) * cols + sc];
-        var shade = 0.55 + 0.45 * Math.max(0, Math.min(1, 0.5 + (hr - h) * 3 + (h - hd) * 3));
-        var v = Math.round(255 * h * shade);
-        var o = (y * cv.width + x) * 4;
-        im.data[o] = Math.min(255, v + 40); im.data[o+1] = v; im.data[o+2] = Math.max(0, v - 20); im.data[o+3] = 255;
-      }
+  /** 真 3D 可旋转预览（three.js 本地打包，拖拽旋转 / 滚轮缩放 / 触屏支持） */
+  var viewer = null;
+  function render3D(m){
+    var pv = $("preview");
+    if(typeof THREE === "undefined"){ pv.textContent = "3D 引擎加载失败（three.min.js 缺失）"; return; }
+
+    // 组装 BufferGeometry（Z-up mm → three 的 Y-up，居中）
+    var n = m.V.length, nf = m.F.length;
+    var pos = new Float32Array(n * 3);
+    var cx = 0, cy = 0, cz = 0;
+    for(var i = 0; i < n; i++){
+      pos[i*3] = m.V[i][0]; pos[i*3+1] = m.V[i][2]; pos[i*3+2] = -m.V[i][1];
     }
-    ctx.putImageData(im, 0, 0);
-    pv.appendChild(cv);
+    var idx = new Uint32Array(nf * 3);
+    for(i = 0; i < nf; i++){ idx[i*3] = m.F[i][0]; idx[i*3+1] = m.F[i][1]; idx[i*3+2] = m.F[i][2]; }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    if(m.C){
+      var col = new Float32Array(n * 3);
+      for(i = 0; i < n; i++){ col[i*3] = m.C[i][0]/255; col[i*3+1] = m.C[i][1]/255; col[i*3+2] = m.C[i][2]/255; }
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    }
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox, center = new THREE.Vector3();
+    bb.getCenter(center);
+    geo.translate(-center.x, -center.y, -center.z);
+    var radius = bb.getSize(new THREE.Vector3()).length() * 0.5;
+
+    // 初始化 / 复用 viewer
+    if(!viewer){
+      pv.innerHTML = "";
+      var renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      renderer.setSize(pv.clientWidth, pv.clientHeight);
+      pv.appendChild(renderer.domElement);
+      var tip = document.createElement("div");
+      tip.className = "pv-tip"; tip.textContent = "拖拽旋转 · 滚轮缩放 · 自动旋转中";
+      pv.appendChild(tip);
+
+      var scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0d11);
+      var camera = new THREE.PerspectiveCamera(45, pv.clientWidth / pv.clientHeight, 0.1, 5000);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      var d1 = new THREE.DirectionalLight(0xffffff, 0.8); d1.position.set(1, 2, 1.5); scene.add(d1);
+      var d2 = new THREE.DirectionalLight(0x88aaff, 0.3); d2.position.set(-1.5, -1, -1); scene.add(d2);
+      var pivot = new THREE.Group(); scene.add(pivot);
+
+      viewer = { renderer: renderer, scene: scene, camera: camera, pivot: pivot, tip: tip,
+                 rotX: -0.5, rotY: 0.6, dist: 100, auto: true, obj: null };
+
+      // 交互：指针拖拽旋转、滚轮缩放（含触屏 Pointer Events）
+      var dragging = false, lx = 0, ly = 0;
+      var el = renderer.domElement;
+      el.addEventListener("pointerdown", function(e){
+        dragging = true; lx = e.clientX; ly = e.clientY;
+        viewer.auto = false; viewer.tip.textContent = "拖拽旋转 · 滚轮缩放";
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener("pointermove", function(e){
+        if(!dragging) return;
+        viewer.rotY += (e.clientX - lx) * 0.008;
+        viewer.rotX += (e.clientY - ly) * 0.008;
+        viewer.rotX = Math.max(-1.5, Math.min(1.5, viewer.rotX));
+        lx = e.clientX; ly = e.clientY;
+      });
+      el.addEventListener("pointerup", function(){ dragging = false; });
+      el.addEventListener("wheel", function(e){
+        e.preventDefault();
+        viewer.dist *= (e.deltaY > 0 ? 1.1 : 0.9);
+        viewer.dist = Math.max(viewer.minD, Math.min(viewer.maxD, viewer.dist));
+      }, { passive: false });
+      window.addEventListener("resize", function(){
+        var w = pv.clientWidth, h = pv.clientHeight;
+        viewer.camera.aspect = w / h; viewer.camera.updateProjectionMatrix();
+        viewer.renderer.setSize(w, h);
+      });
+
+      (function loop(){
+        requestAnimationFrame(loop);
+        if(viewer.auto) viewer.rotY += 0.005;
+        viewer.pivot.rotation.x = viewer.rotX;
+        viewer.pivot.rotation.y = viewer.rotY;
+        var c = viewer.camera;
+        c.position.set(0, 0, viewer.dist);
+        c.lookAt(0, 0, 0);
+        viewer.renderer.render(viewer.scene, viewer.camera);
+      })();
+    }
+
+    // 替换模型
+    if(viewer.obj){
+      viewer.pivot.remove(viewer.obj);
+      viewer.obj.geometry.dispose(); viewer.obj.material.dispose();
+    }
+    var mat = new THREE.MeshStandardMaterial({
+      vertexColors: !!m.C, color: m.C ? 0xffffff : 0xff7a55,
+      metalness: 0.05, roughness: 0.75, flatShading: false
+    });
+    viewer.obj = new THREE.Mesh(geo, mat);
+    viewer.pivot.add(viewer.obj);
+    viewer.dist = radius * 2.6;
+    viewer.minD = radius * 0.8; viewer.maxD = radius * 8;
+    viewer.auto = true;
+    viewer.tip.textContent = "拖拽旋转 · 滚轮缩放 · 自动旋转中";
   }
 
   function save(name, data, mime){
@@ -259,6 +347,7 @@
   $("dl_stl").addEventListener("click", function(){ if(mesh) save("snapprint.stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
   $("dl_obj").addEventListener("click", function(){ if(mesh) save("snapprint.obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
   $("dl_ply").addEventListener("click", function(){ if(mesh) save("snapprint.ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
+  $("dl_glb").addEventListener("click", function(){ if(mesh) save("snapprint.glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
 </script>
 </body>
 </html>

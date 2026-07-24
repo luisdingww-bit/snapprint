@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="api-base" content="" />
   <title>SnapPrint · 咔印3D — 照片转可打印 3D 模型（纯浏览器版）</title>
   <meta name="description" content="上传一张照片，浏览器里直接生成水密可打印的 3D 浮雕模型，导出 STL/OBJ/PLY/GLB。零安装、零后端、开源 Apache-2.0。" />
   <style>
@@ -154,6 +155,16 @@
     .adv-row .adv-label{font-weight:700}
     .adv-row select{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
     .adv-row .adv-note{font-size:12px;color:var(--muted)}
+    .adv-params{width:100%;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;
+      margin-top:10px;padding:10px 12px;background:var(--orange-soft);
+      border:1px solid #f0c8b3;border-radius:10px}
+    .adv-params label{font-size:13px;color:var(--muted);font-weight:600;display:flex;
+      align-items:center;gap:7px}
+    .adv-params select,.adv-params input[type=number]{font:inherit;font-size:13px;font-weight:600;
+      padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--txt)}
+    .adv-params .chk-inline{font-weight:600;cursor:pointer}
+    .adv-params .chk-inline input{accent-color:var(--orange);margin:0}
+    .dl-backend{margin-top:14px}
 
     .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
       padding-top:16px;border-top:1px dashed #f0c8b3}
@@ -294,9 +305,22 @@
         <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
         <div id="panel-top"></div>
         <div class="adv-row" id="adv-row">
-          <label class="adv-label" data-i18n="modelLabel">AI 模型（垂类，可选）</label>
+          <label class="adv-label" data-i18n="modelLabel">AI 引擎（图生3D）</label>
           <select id="model-sel"></select>
-          <span class="adv-note" data-i18n="modelNote">AI 模式需本地部署后端（Hunyuan3D / TripoSR）</span>
+          <span class="adv-note" id="model-note" data-i18n="modelNote">选了引擎即走本地后端图生3D（Hunyuan3D / TripoSR / SF3D / Trellis2）</span>
+          <div class="adv-params hidden" id="adv-params">
+            <label data-i18n="remeshLabel">重网格化
+              <select id="gen-remesh">
+                <option value="none" data-i18n="remeshNone">无（原始）</option>
+                <option value="triangle" data-i18n="remeshTri">三角化</option>
+                <option value="quad" data-i18n="remeshQuad">四边形（需 pymeshlab）</option>
+              </select>
+            </label>
+            <label class="chk-inline"><input type="checkbox" id="gen-texture" /> <span data-i18n="texLabel">保留贴图</span></label>
+            <label class="chk-inline hidden" id="texres-wrap" data-i18n="texresLabel">分辨率
+              <input type="number" id="gen-texres" value="1024" min="256" max="2048" step="256" />
+            </label>
+          </div>
         </div>
 
         <button type="button" class="go" id="go" disabled data-i18n="goBtn">生成 3D 模型</button>
@@ -330,6 +354,7 @@
             <button id="dl_gsply" class="primary">⬇ PLY（3DGS 标准）</button>
             <button id="dl_gssplat">⬇ .splat（Web 查看器）</button>
           </div>
+          <div class="dl hidden" id="dl-backend"></div>
           <div class="hint" id="dl-hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
 
           <!-- 切片就绪预设：按打印机 + 材料智能推荐参数，一键导出 -->
@@ -417,7 +442,14 @@
 
   var S = window.SnapPrintCore;
   function $(id){ return document.getElementById(id); }
+  /** 后端基地址：meta[api-base] 为空表示同源（后端直接托管本页时）。 */
+  function apiBase(){
+    var m = document.querySelector('meta[name="api-base"]');
+    var v = m ? (m.getAttribute("content") || "").trim() : "";
+    return v ? v.replace(/\/+$/, "") : "";
+  }
   var img = null, mesh = null, galleryItem = null, dlName = "snapprint";
+  var lastFile = null;   // 最近一次选择的原始文件（AI 图生3D 需要发给后端）
   var impMesh = null, impName = "";   // 用户上传的 3D 模型（原始网格，未缩放）
   var splat = null, splatScene = null; // 3DGS 点云 / 选中的泼溅场景 id
 
@@ -626,6 +658,7 @@
 
   function pick(f){
     if(!f){ return; }
+    lastFile = f;   // 记住原始文件，AI 图生3D 时发给后端
     if(isModelFile(f)){ pickModel(f); return; }
     if(!f.type || f.type.indexOf("image/") !== 0){
       $("status").textContent = "请选择图片（JPG/PNG）或模型文件（STL/OBJ/PLY/GLB）。";
@@ -683,16 +716,25 @@
   /** 切换预览&下载区的形态：网格 或 3DGS 点云 */
   function setResultKind(kind){
     var isSplat = kind === "splat";
-    $("dl-mesh").classList.toggle("hidden", isSplat);
+    var isBackend = kind === "backend";
+    $("dl-mesh").classList.toggle("hidden", isSplat || isBackend);
     $("dl-splat").classList.toggle("hidden", !isSplat);
-    $("preset-box").classList.toggle("hidden", isSplat);   // 点云不可切片，隐藏预设
-    $("dl-hint").textContent = isSplat
-      ? "PLY（3DGS 标准）可导入 SuperSplat / Polycam / 各类高斯泼溅查看器；.splat 适用于 antimatter15 等 Web 查看器。点云不可直接切片打印。"
-      : "STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。";
+    $("preset-box").classList.toggle("hidden", isSplat || isBackend);
+    $("dl-backend").classList.toggle("hidden", !isBackend);
+    $("dl-hint").classList.toggle("hidden", isBackend);
+    if(isSplat){
+      $("dl-hint").textContent = "PLY（3DGS 标准）可导入 SuperSplat / Polycam / 各类高斯泼溅查看器；.splat 适用于 antimatter15 等 Web 查看器。点云不可直接切片打印。";
+    }else if(!isBackend){
+      $("dl-hint").textContent = "STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。";
+    }
   }
 
   function generate(){
     if(!S) return;
+    // 选中 AI 引擎且有图片 → 走后端图生3D（多引擎 + 生成参数）
+    if(window.SNAP_MODEL && lastFile && (lastFile.type||"").indexOf("image/")===0){
+      generateAI(); return;
+    }
     if(P.mode==="import" && !impMesh) return;
     if(P.mode==="splat" && !img && !splatScene) return;
     if(P.mode!=="solid3d" && P.mode!=="import" && P.mode!=="splat" && !img && !galleryItem) return;
@@ -1091,25 +1133,130 @@
     window._presetRefresh = refresh;
   })();
 
-  // 模型动物园（垂类模型选择；本地部署后端 AI 模式将据此加载对应权重）
+  // 模型动物园（对齐 modly 的多引擎图生3D 阵容；速度↔质量可选）
   (function initModelZoo(){
     var ZOO = [
-      {id:"hunyuan3d", name:"Hunyuan3D-2（通用）", domain:"通用"},
-      {id:"triposr", name:"TripoSR（快速）", domain:"通用"},
-      {id:"figure", name:"手办（社区微调）", domain:"手办"},
-      {id:"jewelry", name:"珠宝（社区微调）", domain:"珠宝"},
-      {id:"ecom", name:"电商（社区微调）", domain:"电商"},
+      {id:"hunyuan3d", name:"Hunyuan3D-2（通用底座）", speed:"balanced", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini", name:"Hunyuan3D 2 Mini（轻量）", speed:"fast", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini-turbo", name:"Hunyuan3D 2 Mini Turbo（极速）", speed:"fastest", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini-fast", name:"Hunyuan3D 2 Mini Fast（极速）", speed:"fastest", texture:true, domain:"通用"},
+      {id:"triposg", name:"TripoSG（几何质量高）", speed:"balanced", texture:false, domain:"通用"},
+      {id:"sf3d", name:"SF3D（秒级·拓扑干净）", speed:"fast", texture:false, domain:"通用"},
+      {id:"trellis2", name:"Trellis2 GGUF（高质量）", speed:"quality", texture:true, domain:"通用"},
+      {id:"figure", name:"手办模型（社区微调）", speed:"balanced", texture:true, domain:"手办"},
+      {id:"jewelry", name:"珠宝模型（社区微调）", speed:"balanced", texture:true, domain:"珠宝"},
+      {id:"ecom", name:"电商模型（社区微调）", speed:"balanced", texture:true, domain:"电商"}
     ];
+    var SPEED_LABELS = {fastest:"⚡极速", fast:"🚀快速", balanced:"⚖️均衡", quality:"💎高质量"};
     var sel = $("model-sel"); if(!sel) return;
     window.SNAP_MODEL = "";
-    var o0 = document.createElement("option"); o0.value=""; o0.textContent="默认（按模式）"; sel.appendChild(o0);
+    var o0 = document.createElement("option"); o0.value=""; o0.textContent="默认（客户端模式）"; sel.appendChild(o0);
+    var byId = {};
     ZOO.forEach(function(m){
+      byId[m.id] = m;
       var o = document.createElement("option"); o.value=m.id;
-      o.textContent = m.name + " · " + m.domain + (m.domain!=="通用" ? "（需自备权重）" : "");
+      var tag = "[" + (SPEED_LABELS[m.speed]||m.speed) + (m.texture ? " · 贴图" : "") + "]";
+      o.textContent = m.name + " " + tag;
       sel.appendChild(o);
     });
-    sel.addEventListener("change", function(){ window.SNAP_MODEL = sel.value; });
+    function onSelect(){
+      window.SNAP_MODEL = sel.value;
+      var m = byId[sel.value];
+      var show = !!sel.value;
+      $("adv-params").classList.toggle("hidden", !show);
+      $("texres-wrap").classList.toggle("hidden", !(m && m.texture)); // 仅支持贴图的引擎显示分辨率
+      if(!show){ $("status").textContent = "已切回客户端模式。"; }
+      else { $("status").textContent = "已选 AI 引擎 " + m.name + "（" + (SPEED_LABELS[m.speed]||m.speed) + "）。点击生成将走本地后端图生3D。"; }
+    }
+    sel.addEventListener("change", onSelect);
+    // 若配置了 api-base，拉取 /api/models 标注本机权重可用性
+    var base = apiBase();
+    if(base){
+      fetch(base + "/api/models").then(function(r){ return r.json(); }).then(function(j){
+        var avail = {};
+        (j.models||[]).forEach(function(x){ avail[x.id] = x.available; });
+        Array.prototype.forEach.call(sel.options, function(o){
+          if(!o.value || !avail.hasOwnProperty(o.value)) return;
+          if(!avail[o.value]) o.textContent = o.textContent + "（需本地权重）";
+        });
+      }).catch(function(){});
+    }
   })();
+
+  /* ── 后端图生3D（多引擎 + 生成参数）：异步生成 → 轮询 → 下载链接 ── */
+  function generateAI(){
+    var base = apiBase();
+    if(!base){
+      $("status").textContent = "未配置后端：AI 图生3D 需本地部署 SnapPrint 后端（见 README「本地部署」）。纯浏览器模式可用上方其他生成模式。";
+      return;
+    }
+    if(!lastFile || (lastFile.type||"").indexOf("image/")!==0){
+      $("status").textContent = "请先选择一张图片，再生成 AI 3D 模型。"; return;
+    }
+    if(!window.SNAP_MODEL){ $("status").textContent = "请选择一个 AI 引擎。"; return; }
+    var m = window.SNAP_MODEL;
+    var fd = new FormData();
+    fd.append("file", lastFile);
+    fd.append("model", m);
+    fd.append("remesh", $("gen-remesh").value);
+    fd.append("enable_texture", $("gen-texture").checked ? "true" : "false");
+    fd.append("texture_resolution", $("gen-texres").value);
+    $("status").textContent = "提交到后端生成（"+m+"）…";
+    fetch(base + "/api/generate_async", { method:"POST", body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j.task_id){ pollAI(base, j.task_id); }
+        else if(j.detail){ $("status").textContent = "后端错误：" + j.detail; }
+        else { $("status").textContent = "后端未返回任务 ID。"; }
+      })
+      .catch(function(e){ $("status").textContent = "无法连接后端（"+base+"）：" + e.message; });
+  }
+  function pollAI(base, tid){
+    fetch(base + "/api/tasks/" + tid)
+      .then(function(r){ return r.json(); })
+      .then(function(t){
+        if(t.status==="queued" || t.status==="running"){
+          $("status").textContent = "生成中… " + (t.progress||0) + "% " + (t.stage?("· "+t.stage):"");
+          setTimeout(function(){ pollAI(base, tid); }, 1500);
+        }else if(t.status==="done"){
+          showAIResult(t.result || {}, base);
+        }else if(t.status==="error"){
+          $("status").textContent = "生成失败：" + (t.error || "未知错误");
+        }else{
+          $("status").textContent = "任务状态：" + (t.status||"未知");
+        }
+      })
+      .catch(function(e){ $("status").textContent = "轮询失败：" + e.message; });
+  }
+  function showAIResult(res, base){
+    $("result").classList.remove("hidden");
+    if(res.stats) renderStats(res.stats);
+    setResultKind("backend");
+    var box = $("dl-backend"); box.innerHTML = "";
+    var files = res.files || {};
+    var order = [
+      ["obj","⬇ OBJ","推荐打印"], ["ply","⬇ PLY（带颜色）",""],
+      ["glb","⬇ GLB（AR/网页）",""], ["3mf","⬇ 3MF（颜色+元数据）",""]
+    ];
+    var any = false;
+    order.forEach(function(p){
+      if(files[p[0]]){
+        any = true;
+        var b = document.createElement("button");
+        b.className = "primary";
+        b.textContent = p[1] + (p[2] ? "（"+p[2]+"）" : "");
+        b.onclick = function(){ window.open(base + files[p[0]], "_blank"); };
+        box.appendChild(b);
+      }
+    });
+    if(!any){
+      var s = document.createElement("span");
+      s.className = "hint"; s.textContent = "后端未返回可下载文件。";
+      box.appendChild(s);
+    }
+    $("panel-bottom").classList.remove("hidden");
+    $("status").textContent = "✅ 后端生成完成（" + (window.SNAP_MODEL||"") + "）";
+  }
 
   // 轻量多语言（中英）：data-i18n=纯文本，data-i18n-html=含标签文本
   (function initI18n(){
@@ -1123,7 +1270,9 @@
         presetHead:'🖨 切片就绪预设<span>按你的打印机智能推荐参数</span>',
         galleryTitle:"模型库", galleryMore:"更多社区模型 →",
         gallerySub:"33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。",
-        modelLabel:"AI 模型（垂类，可选）", modelNote:"AI 模式需本地部署后端（Hunyuan3D / TripoSR）"
+        modelLabel:"AI 引擎（图生3D）", modelNote:"选了引擎即走本地后端图生3D（Hunyuan3D / TripoSR / SF3D / Trellis2）",
+        remeshLabel:"重网格化", remeshNone:"无（原始）", remeshTri:"三角化", remeshQuad:"四边形（需 pymeshlab）",
+        texLabel:"保留贴图", texresLabel:"分辨率"
       },
       en: {
         navMake:"Create", navGallery:"Model Library", navGs:"Gaussian Splatting", navComm:"Community",
@@ -1134,7 +1283,9 @@
         presetHead:'🖨 Slice-ready Preset<span>Smart parameters for your printer</span>',
         galleryTitle:"Model Library", galleryMore:"More community models →",
         gallerySub:"33 built-in original models (16 real 3D + 9 relief + 8 Gaussian splatting) · Apache-2.0, free to print/commercialize — all downloadable; click a card to generate, preview and export instantly.",
-        modelLabel:"AI Model (domain, optional)", modelNote:"AI mode needs a locally deployed backend (Hunyuan3D / TripoSR)"
+        modelLabel:"AI Engine (image-to-3D)", modelNote:"Pick an engine to use the local backend for image-to-3D (Hunyuan3D / TripoSR / SF3D / Trellis2)",
+        remeshLabel:"Remesh", remeshNone:"None (raw)", remeshTri:"Triangulate", remeshQuad:"Quad (needs pymeshlab)",
+        texLabel:"Keep texture", texresLabel:"Resolution"
       }
     };
     function applyLang(lang){

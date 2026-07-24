@@ -3,7 +3,7 @@
 > Turn a photo into a **directly 3D-printable** model.
 > Open source · Chinese-friendly · Apache-2.0 (commercial-friendly).
 
-![license](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-Offline%20Relief%20%7C%20Hunyuan3D%20%7C%20TripoSR-blue) [![demo](https://img.shields.io/badge/online%20demo-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
+![license](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-Offline%20Relief%20%7C%20Multi--engine%20blue) [![demo](https://img.shields.io/badge/online%20demo-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
 
 **🌐 Public Online Demo (no install): <https://snapprint-3d.surge.sh>** — a pure browser build with five modes (photo relief / 2D outline extrude / real 3D geometry / model import / 3DGS Gaussian splatting) + a 33-model library + slice-ready presets. Everything runs locally; your files never leave the browser.
 
@@ -44,6 +44,9 @@ There are already many "image-to-3D" open-source projects (TripoSR, InstantMesh,
 - 🔐 **API Key auth + rate limit**: for intranet / small-team deploys, set `SNAPRINT_API_KEY` and `SNAPRINT_RATE_LIMIT` to prevent abuse
 - 🌍 **Multilingual**: one click on the top-right of the Web UI switches Chinese / English
 - 🌐 **Chinese UI & docs** for domestic 3D-printing enthusiasts and creators
+- 🌐 **Multi-engine image-to-3D (aligned with modly)**: the Model Zoo grows to 10 engines — Hunyuan3D-2 and its Mini / Mini-Turbo / Mini-Fast variants, TripoSG, SF3D, Trellis2, plus figure / jewelry / e-commerce verticals; a unified interface routes by a speed↔quality tier
+- 🎛️ **Generation params (remesh / texture)**: remesh `none / triangle / quad` (quad needs pymeshlab, auto-falls back to triangle if missing), whether to keep the generated texture (`False` bakes it to vertex colors for single-color printing), and adjustable texture resolution (256–2048)
+- 🔌 **Unified backend-served frontend**: the local backend serves `web/` directly, so the pure-browser build and local AI share one UI; cross-origin (e.g. surge static site → local backend) auto-adapts via `<meta name="api-base">` + CORS
 
 ## Quick start (3 ways)
 
@@ -79,14 +82,13 @@ For a more volumetric "photo → real 3D" result, place open-source weights + in
 ```
 snapprint/
 ├── app/
-│   ├── main.py          # FastAPI Web backend
-│   ├── pipeline.py       # main pipeline entry run()
+│   ├── main.py          # FastAPI Web backend (also serves web/ static frontend)
+│   ├── pipeline.py       # main pipeline entry run() (passes remesh/texture params through)
 │   ├── advisor.py        # printability / support-advice analysis
-│   ├── backends.py       # offline relief + AI-mode adapter layer
+│   ├── backends.py       # offline relief + multi-engine AI adapter (Hunyuan3D/TripoSR/SF3D/Trellis2)
 │   ├── postprocess.py    # watertight/decimate/orient/scale/export (the moat)
 │   └── config.py         # default params (millimeter-level) + Model Zoo
-├── frontend/index.html   # Chinese Web UI (zero build)
-├── web/                  # pure-browser build (surge-hosted): 5 modes + library + presets
+├── web/                  # unified frontend (surge-hosted + backend-served): 5 modes + library + presets + AI image-to-3D params
 ├── blender/SnapPrintBlender/  # Blender add-on (calls local backend)
 ├── comfyui/SnapPrintNode/     # ComfyUI custom nodes
 ├── scripts/              # start scripts
@@ -105,7 +107,17 @@ SnapPrint exposes "photo → printable 3D" as a capability embeddable in other t
 | `GET  /api/tasks/{id}` | Poll status / staged progress / result (with download links) |
 | `POST /api/batch` | Batch generation, multiple files → list of `task_id`s |
 | `POST /api/analyze` | Upload an image or mesh (stl/obj/ply/3mf) → printability / support-advice JSON |
-| `GET  /api/models` | List the Model Zoo (with local-weight availability probe) |
+| `GET  /api/models` | List the Model Zoo (with local-weight availability probe, and speed/texture tags) |
+
+**Common optional params on the generation endpoints** (aligns with modly's image-to-3D params), for `POST /api/generate`, `/api/generate_async`, `/api/batch`:
+
+| Param | Type | Description |
+|---|---|---|
+| `model` | str | Model Zoo id (hunyuan3d / hunyuan3d-mini-turbo / sf3d / trellis2 …); empty = offline relief |
+| `remesh` | str | `none` / `triangle` / `quad`; quad needs pymeshlab, auto-falls back to triangle if missing |
+| `enable_texture` | bool | Keep generated texture; `False` bakes it to vertex colors (good for single-color printing) |
+| `texture_resolution` | int | Texture resolution (256–2048, default 1024) |
+| `params` | str(JSON) | Model-specific extra inference params, merged into the entry's default params |
 
 **Security (intranet / small teams):** once `SNAPRINT_API_KEY` is set, the generate / analyze / batch endpoints require an `X-API-Key` header; `SNAPRINT_RATE_LIMIT=N` enables a per-client N-requests-per-minute limit. With neither set, everything is open (good for local / public Demo).
 
@@ -123,7 +135,7 @@ SnapPrint exposes "photo → printable 3D" as a capability embeddable in other t
 
 ## Roadmap
 
-See [docs/路线图.md](docs/路线图.md). v0.2 (async queue / public Demo / slice presets), v0.3 (auto support advice / Blender add-on / ComfyUI nodes) and v0.4 (Model Zoo / batch + API-Key rate limit / multilingual docs) are all complete ✅.
+See [docs/路线图.md](docs/路线图.md). v0.2 (async queue / public Demo / slice presets), v0.3 (auto support advice / Blender add-on / ComfyUI nodes), v0.4 (Model Zoo / batch + API-Key rate limit / multilingual docs) and v0.5 (modly-aligned multi-engine image-to-3D + generation params remesh/texture + unified backend-served frontend) are all complete ✅.
 
 ## License
 

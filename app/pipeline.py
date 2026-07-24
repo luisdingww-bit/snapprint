@@ -23,12 +23,21 @@ def run(
     name: str = "model",
     progress_cb=None,
     model: str = "",
+    remesh: str = "none",
+    enable_texture: bool = False,
+    texture_resolution: int = 1024,
+    params: "dict | None" = None,
 ) -> dict:
     """执行一次「照片 -> 可打印 3D」转换。
 
     参数：
         progress_cb: 可选回调 ``cb(stage: str, percent: int)``，
                      用于异步任务队列向前端上报分阶段进度。
+        model: 模型动物园 id（图生3D 模式选择引擎，如 sf3d / hunyuan3d-mini-turbo）。
+        remesh: 重网格化模式 "none" | "triangle" | "quad"（对齐 modly）。
+        enable_texture: 是否保留生成贴图（False 则烘焙为顶点色，利于打印）。
+        texture_resolution: 贴图分辨率（启用贴图时生效）。
+        params: 模型专属推理参数（合并进后端调用）。
 
     返回：
         {
@@ -51,7 +60,15 @@ def run(
 
     backend = get_backend(mode, cfg, model)
     _p(f"生成原始网格（{backend.name}）", 15)
-    raw = backend.generate(image, steps=cfg.ai_steps, device=cfg.ai_device)
+    gen_kwargs = dict(
+        steps=cfg.ai_steps,
+        device=cfg.ai_device,
+        remesh=remesh,
+        enable_texture=enable_texture,
+        texture_resolution=texture_resolution,
+        params=params or {},
+    )
+    raw = backend.generate(image, **gen_kwargs)
 
     _p("打印级后处理（水密 / 减面 / 摆正）", 65)
     processed = postprocess(

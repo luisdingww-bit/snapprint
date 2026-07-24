@@ -3,7 +3,7 @@
 > 一张照片，生成一个**可直接 3D 打印**的模型。
 > 开源 · 中文友好 · Apache-2.0 商用友好。
 
-![mode](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-离线浮雕%20%7C%20Hunyuan3D%20%7C%20TripoSR-blue) [![demo](https://img.shields.io/badge/在线体验-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
+![mode](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-离线浮雕%20%7C%20多引擎图生3D-blue) [![demo](https://img.shields.io/badge/在线体验-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
 
 **🌐 在线公共 Demo（无需安装）：<https://snapprint-3d.surge.sh>** — 纯浏览器版：照片浮雕 / 2D轮廓拉伸 / 真实3D几何 / 模型导入 / 3DGS高斯泼溅五模式 + 33 款内置模型库 + 切片就绪预设，全程本地计算、文件不上传任何服务器。
 
@@ -44,6 +44,9 @@
 - 📦 **批量生成**：`POST /api/batch` 一次提交多张图片，各自独立异步任务
 - 🔐 **API Key 鉴权 + 限流**：内网 / 小团队部署可设 `SNAPRINT_API_KEY` 与 `SNAPRINT_RATE_LIMIT` 防滥用
 - 🌍 **多语言**：Web UI 右上角一键切换中文 / English
+- 🌐 **多引擎图生 3D（对齐 modly）**：模型动物园扩展到 10 款引擎——Hunyuan3D-2 及 Mini / Mini-Turbo / Mini-Fast 变体、TripoSG、SF3D、Trellis2，外加手办 / 珠宝 / 电商垂类；统一接口按「速度↔质量」档位路由
+- 🎛️ **生成参数（remesh / 贴图）**：重网格化 `none / triangle / quad`（quad 需 pymeshlab，缺失自动回退三角并提示）、是否保留贴图（`False` 时烘焙为顶点色，利于单色打印）、贴图分辨率可调（256–2048）
+- 🔌 **统一后端托管前端**：本地后端直接托管 `web/`，纯浏览器版与本地 AI 能力共用一套 UI；跨域（如 surge 静态站 → 本地后端）通过 `<meta name="api-base">` + CORS 自动适配
 
 ## 快速开始（3 种方式）
 
@@ -80,14 +83,13 @@ python -m app.main
 ```
 snapprint/
 ├── app/
-│   ├── main.py          # FastAPI Web 后端
-│   ├── pipeline.py       # 主流水线入口 run()
+│   ├── main.py          # FastAPI Web 后端（同时托管 web/ 静态前端）
+│   ├── pipeline.py       # 主流水线入口 run()（透传 remesh/贴图参数）
 │   ├── advisor.py        # 可打印性 / 支撑建议分析
-│   ├── backends.py       # 离线浮雕 + AI 模式适配层
+│   ├── backends.py       # 离线浮雕 + 多引擎 AI 适配层（Hunyuan3D/TripoSR/SF3D/Trellis2）
 │   ├── postprocess.py    # 水密/减面/摆正/缩放/导出（打印护城河）
-│   └── config.py         # 默认参数（毫米级）
-├── frontend/index.html   # 中文 Web UI（零构建）
-├── web/                  # 纯浏览器版（surge 托管）：五模式 + 模型库 + 切片预设
+│   └── config.py         # 默认参数（毫米级）+ 模型动物园 MODEL_ZOO
+├── web/                  # 统一前端（surge 托管 + 本地后端托管）：五模式 + 模型库 + 切片预设 + AI 图生3D 参数
 ├── blender/SnapPrintBlender/  # Blender 插件（调本地后端）
 ├── comfyui/SnapPrintNode/     # ComfyUI 自定义节点
 ├── scripts/              # 一键启动脚本
@@ -107,7 +109,17 @@ SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，
 | `GET  /api/tasks/{id}` | 轮询状态 / 分阶段进度 / 结果（含下载链接） |
 | `POST /api/batch` | 批量生成，接收多文件，返回各自 `task_id` 列表 |
 | `POST /api/analyze` | 上传图片或网格（stl/obj/ply/3mf），返回可打印性 / 支撑建议 JSON |
-| `GET  /api/models` | 列出模型动物园（含本机权重可用性探测） |
+| `GET  /api/models` | 列出模型动物园（含本机权重可用性探测，及 speed/texture 标签） |
+
+**生成接口通用可选参数（对齐 modly 图生3D 参数）**，适用于 `POST /api/generate`、`/api/generate_async`、`/api/batch`：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `model` | str | 模型动物园 id（hunyuan3d / hunyuan3d-mini-turbo / sf3d / trellis2 …）；留空=离线浮雕 |
+| `remesh` | str | `none` / `triangle` / `quad`；quad 需 pymeshlab，缺失自动回退三角 |
+| `enable_texture` | bool | 是否保留生成贴图；`False` 时烘焙为顶点色（利于单色打印） |
+| `texture_resolution` | int | 贴图分辨率（256–2048，默认 1024） |
+| `params` | str(JSON) | 模型专属额外推理参数，合并进条目默认 params |
 
 **安全（内网 / 小团队）**：设置环境变量 `SNAPRINT_API_KEY` 后，生成 / 分析 / 批量接口需携带请求头 `X-API-Key`；设置 `SNAPRINT_RATE_LIMIT=N` 启用每客户端每分钟 N 次限流。两者均未设置时完全开放（方便本地 / 公开 Demo）。
 
@@ -125,7 +137,7 @@ SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，
 
 ## 路线图
 
-见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）、v0.3（自动支撑建议 / Blender 插件 / ComfyUI 节点）与 v0.4（模型动物园 / 批量生成 + API Key 限流 / 多语言文档）均已完成 ✅。
+见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）、v0.3（自动支撑建议 / Blender 插件 / ComfyUI 节点）、v0.4（模型动物园 / 批量生成 + API Key 限流 / 多语言文档）与 v0.5（对齐 modly 多引擎图生3D + 生成参数 remesh/贴图 + 统一后端托管前端）均已完成 ✅。
 
 ## 许可证
 

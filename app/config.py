@@ -42,54 +42,128 @@ DEFAULT_CONFIG = SnapConfig()
 
 # ---------------------------------------------------------------------------
 # 模型动物园（Model Zoo）
-# 基础模型 + 社区微调垂类。权重需用户自备并放入 cfg.model_dir 对应子目录。
-# `available` 仅作前端标注；真正的可用性由本机 models/ 目录是否存在权重决定
-# （见 resolve_model / 后端 /api/models 的本地探测）。
+# 对齐 modly 的多引擎图生3D 阵容：速度↔质量可选（sf3d / Hunyuan3D-2 系列 /
+# TripoSG / Trellis2），外加社区微调垂类。权重需用户自备并放入
+# cfg.model_dir 对应子目录。`available` 仅作前端标注；真正的可用性由本机
+# models/ 目录是否存在权重决定（见 resolve_model / 后端 /api/models）。
+#
+# 字段说明：
+#   id       前端/API 选择的模型标识
+#   name     展示名
+#   backend  后端路由名（hunyuan3d / triposr / sf3d / trellis）
+#   weights  权重目录（相对于 cfg.model_dir）
+#   domain   垂类（通用 / 手办 / 珠宝 / 电商）
+#   available 本机是否已具备权重（运行时按 models/ 探测覆盖）
+#   speed    速度↔质量档位：fastest / fast / balanced / quality
+#   texture  是否支持生成带贴图的网格（True 时 enable_texture 可保留贴图）
+#   params   模型专属默认推理参数（会合并进用户传入的 params）
+#   note     前端提示
 # ---------------------------------------------------------------------------
 MODEL_ZOO: list[dict] = [
     {
         "id": "hunyuan3d", "name": "Hunyuan3D-2（通用底座）", "backend": "hunyuan3d",
         "weights": "Hunyuan3D-2", "domain": "通用", "available": True,
+        "speed": "balanced", "texture": True, "params": {"steps": 50},
         "note": "腾讯开源通用图生3D，首次使用自动从 HuggingFace 拉取权重",
     },
     {
-        "id": "triposr", "name": "TripoSR（轻量快速）", "backend": "triposr",
-        "weights": "TripoSR", "domain": "通用", "available": True,
-        "note": "Stability 开源，单图秒级重建，需自备 GPU 权重",
+        "id": "hunyuan3d-mini", "name": "Hunyuan3D 2 Mini（轻量）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-mini", "domain": "通用", "available": False,
+        "speed": "fast", "texture": True, "params": {"steps": 30},
+        "note": "轻量版，速度更快；权重放置于 models/Hunyuan3D-2-mini",
+    },
+    {
+        "id": "hunyuan3d-mini-turbo", "name": "Hunyuan3D 2 Mini Turbo（极速）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-mini-turbo", "domain": "通用", "available": False,
+        "speed": "fastest", "texture": True, "params": {"steps": 20},
+        "note": "蒸馏加速，最快但细节略减；权重放置于 models/Hunyuan3D-2-mini-turbo",
+    },
+    {
+        "id": "hunyuan3d-mini-fast", "name": "Hunyuan3D 2 Mini Fast（极速）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-mini-fast", "domain": "通用", "available": False,
+        "speed": "fastest", "texture": True, "params": {"steps": 20},
+        "note": "蒸馏加速，最快但细节略减；权重放置于 models/Hunyuan3D-2-mini-fast",
+    },
+    {
+        "id": "triposg", "name": "TripoSG（几何质量高）", "backend": "triposr",
+        "weights": "TripoSG", "domain": "通用", "available": False,
+        "speed": "balanced", "texture": False, "params": {},
+        "note": "TripoSR 的图生3D继承者，几何质量高；映射到 TripoSR 后端，权重放置于 models/TripoSG",
+    },
+    {
+        "id": "sf3d", "name": "SF3D（秒级·拓扑干净）", "backend": "sf3d",
+        "weights": "SF3D", "domain": "通用", "available": False,
+        "speed": "fast", "texture": False, "params": {},
+        "note": "Stability 开源，秒级重建、四边形化拓扑；需安装 stability-fast-3d 与 GPU 权重",
+    },
+    {
+        "id": "trellis2", "name": "Trellis2 GGUF（高质量）", "backend": "trellis",
+        "weights": "Trellis2", "domain": "通用", "available": False,
+        "speed": "quality", "texture": True, "params": {},
+        "note": "高质量结构化潜空间；需 trellis 推理环境与权重，放置于 models/Trellis2",
     },
     {
         "id": "figure", "name": "手办模型（社区微调）", "backend": "hunyuan3d",
         "weights": "Hunyuan3D-2-figure", "domain": "手办", "available": False,
+        "speed": "balanced", "texture": True, "params": {"steps": 50},
         "note": "适合人形/手办细节；将权重放置于 models/Hunyuan3D-2-figure",
     },
     {
         "id": "jewelry", "name": "珠宝模型（社区微调）", "backend": "hunyuan3d",
         "weights": "Hunyuan3D-2-jewelry", "domain": "珠宝", "available": False,
+        "speed": "balanced", "texture": True, "params": {"steps": 50},
         "note": "金属/宝石反光细节；权重放置于 models/Hunyuan3D-2-jewelry",
     },
     {
         "id": "ecom", "name": "电商模型（社区微调）", "backend": "hunyuan3d",
         "weights": "Hunyuan3D-2-ecom", "domain": "电商", "available": False,
+        "speed": "balanced", "texture": True, "params": {"steps": 50},
         "note": "商品白底图优化；权重放置于 models/Hunyuan3D-2-ecom",
     },
 ]
+
+# 速度档位展示标签（前端 i18n 之外的基础标签）
+SPEED_TAGS = {
+    "fastest": "⚡ 极速",
+    "fast": "🚀 快速",
+    "balanced": "⚖️ 均衡",
+    "quality": "💎 高质量",
+}
 
 # 本地确实存在的权重目录（供 /api/models 标注 available）
 def _local_weights_present(cfg, weights: str) -> bool:
     return os.path.isdir(os.path.join(getattr(cfg, "model_dir", "models"), weights))
 
 
+def _default_entry() -> dict:
+    for m in MODEL_ZOO:
+        if m["id"] == "hunyuan3d":
+            return m
+    return MODEL_ZOO[0]
+
+
+def model_entry(model_id: str = "", cfg=None) -> dict:
+    """返回 model_id 对应的完整条目；空/未知 → 默认通用 hunyuan3d 条目。"""
+    if not model_id:
+        return _default_entry()
+    for m in MODEL_ZOO:
+        if m["id"] == model_id:
+            return m
+    return _default_entry()
+
+
 def resolve_model(model_id: str = "", cfg=None) -> tuple:
     """把 model_id 解析为 (backend_name, weights_dir, domain)。
 
     - 空 / 未知 → 回退通用 hunyuan3d 的默认权重
-    - 命中垂类 → 返回其 backend + 专用权重目录
+    - 命中条目 → 返回其 backend + 专用权重目录 + 垂类
     离线浮雕模式忽略 model。
     """
-    if not model_id:
-        return "hunyuan3d", "Hunyuan3D-2", "通用"
-    for m in MODEL_ZOO:
-        if m["id"] == model_id:
-            return m["backend"], m["weights"], m["domain"]
-    return "hunyuan3d", "Hunyuan3D-2", "通用"
+    e = model_entry(model_id, cfg)
+    return e["backend"], e["weights"], e["domain"]
+
+
+def resolve_model_full(model_id: str = "", cfg=None) -> dict:
+    """返回 model_id 对应的完整条目字典（含 speed/texture/params 等）。"""
+    return model_entry(model_id, cfg)
 

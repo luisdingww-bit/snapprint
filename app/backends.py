@@ -12,7 +12,7 @@ import numpy as np
 import trimesh
 from PIL import Image
 
-from .config import resolve_model
+from .config import resolve_model, resolve_model_full
 
 
 def _cuda_available() -> bool:
@@ -37,6 +37,81 @@ def _to_trimesh(obj) -> "trimesh.Trimesh":
         return trimesh.Trimesh(vertices=np.asarray(obj.vertices),
                                faces=np.asarray(obj.faces))
     raise TypeError(f"无法把 {type(obj)!r} 转换成 trimesh.Trimesh")
+
+
+def _apply_texture(mesh: "trimesh.Trimesh", enable_texture: bool, texture_resolution: int):
+    """贴图处理：enable_texture=False 时把贴图烘焙为顶点色（利于切片/单色打印）。
+
+    - enable_texture=True：保留生成时的贴图或顶点色，原样返回。
+    - enable_texture=False：若网格带 TextureVisuals，烘焙成顶点色 ColorVisuals。
+    无贴图的网格（已顶点色/纯色）直接返回。
+    """
+    if enable_texture:
+        return mesh
+    try:
+        if isinstance(mesh.visual, trimesh.visual.TextureVisuals):
+            baked = mesh.visual.to_color()
+            if baked is not None:
+                mesh = mesh.copy()
+                mesh.visual = baked
+    except Exception:
+        # 烘焙失败则保留原样（不阻断主流程）
+        pass
+    return mesh
+
+
+def _apply_remesh(mesh: "trimesh.Trimesh", remesh: str):
+    """重网格化（modly 的 remesh 参数）：none / triangle / quad。
+
+    返回 (mesh, note)。quad 需要 pymeshlab（部分环境无），缺失或失败则
+    安全回退为三角网格并附说明 note。
+    """
+    note = ""
+    remesh = (remesh or "none").lower()
+    if remesh == "none":
+        return mesh, note
+    if remesh == "triangle":
+        if not getattr(mesh, "is_triangles", True):
+            try:
+                mesh = mesh.triangulate()
+            except Exception:
+                pass
+        return mesh, note
+    if remesh == "quad":
+        try:
+            import tempfile
+            import pymeshlab as _ms
+            tmp = tempfile.mkdtemp()
+            inp = os.path.join(tmp, "in.obj")
+            outp = os.path.join(tmp, "out.obj")
+            mesh.export(inp)
+            mset = _ms.MeshSet()
+            mset.load_new_mesh(inp)
+            try:
+                mset.meshing_quadrangulation()
+            except Exception:
+                # 个别 pymeshlab 版本用不同的四边形化接口
+                mset.apply_filter("meshing_quadrangulation")
+            mset.save_current_mesh(outp)
+            mesh = trimesh.load(outp)
+        except ImportError:
+            note = "quad 重网格化需要 pymeshlab（本机未安装），已回退为三角网格"
+            if not getattr(mesh, "is_triangles", True):
+                try:
+                    mesh = mesh.triangulate()
+                except Exception:
+                    pass
+        except Exception as exc:  # 其他错误也安全回退
+            note = f"quad 重网格化失败（{exc}），已回退为三角网格"
+            if not getattr(mesh, "is_triangles", True):
+                try:
+                    mesh = mesh.triangulate()
+                except Exception:
+                    pass
+        return mesh, note
+    # 未知值按 none 处理
+    return mesh, note
+
 
 
 def build_relief_mesh(
@@ -138,12 +213,17 @@ class ReliefBackend(Backend):
 
 
 class HunyuanBackend(Backend):
-    """Hunyuan3D-2 适配层（需自备 GPU + 权重，见 docs/部署.md）。"""
+    """Hunyuan3D-2 适配层（需自备 GPU + 权重，见 docs/部署.md）。
+
+    支持 Hunyuan3D-2 及其 Mini / Mini-Turbo / Mini-Fast 变体（通过 weights_dir
+    与 variant 区分；turbo/fast 默认更少步数以提速）。
+    """
     name = "hunyuan3d"
 
-    def __init__(self, cfg, weights_dir: str = "Hunyuan3D-2"):
+    def __init__(self, cfg, weights_dir: str = "Hunyuan3D-2", variant: str = ""):
         self.cfg = cfg
         self.weights_dir = weights_dir
+        self.variant = variant or ""
         self._model = None
 
     def _load(self):
@@ -155,7 +235,7 @@ class HunyuanBackend(Backend):
                 "  1) 安装带 CUDA 的 PyTorch（按你的显卡选版本）\n"
                 "     pip install torch --index-url https://download.pytorch.org/whl/cu121\n"
                 "  2) pip install hy3dgen\n"
-                "  3) 权重会自动从 HuggingFace 拉取，或放到 models/Hunyuan3D-2\n"
+                "  3) 权重会自动从 HuggingFace 拉取，或放到 models/" + self.weights_dir + "\n"
                 "详见 docs/部署.md"
             ) from e
         local = os.path.join(self.cfg.model_dir, self.weights_dir)
@@ -165,9 +245,21 @@ class HunyuanBackend(Backend):
     def generate(self, image: "Image.Image", **kwargs) -> "trimesh.Trimesh":
         if self._model is None:
             self._load()
-        steps = int(kwargs.get("steps", self.cfg.ai_steps))
+        # 步数：turbo/fast 变体默认更少步数；否则用条目 params.steps / 全局配置
+        if self.variant in ("turbo", "fast"):
+            steps = int(kwargs.get("steps") or 20)
+        else:
+            steps = int(kwargs.get("steps")
+                        or (kwargs.get("params") or {}).get("steps")
+                        or self.cfg.ai_steps)
+        remesh = kwargs.get("remesh", "none")
+        enable_texture = bool(kwargs.get("enable_texture", False))
+        texture_resolution = int(kwargs.get("texture_resolution", 1024))
         out = self._model(image=image, num_inference_steps=steps)
-        return _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _apply_texture(mesh, enable_texture, texture_resolution)
+        mesh, _note = _apply_remesh(mesh, remesh)
+        return mesh
 
 
 class TripoSRBackend(Backend):
@@ -213,16 +305,106 @@ class TripoSRBackend(Backend):
             img = image.resize((512, 512))
         arr = np.asarray(img)
         out = self._model.reconstruct([arr], batch_size=1)
-        return _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _apply_texture(mesh, bool(kwargs.get("enable_texture", False)),
+                              int(kwargs.get("texture_resolution", 1024)))
+        mesh, _note = _apply_remesh(mesh, kwargs.get("remesh", "none"))
+        return mesh
+
+
+class Sf3dBackend(Backend):
+    """SF3D 适配层（Stability Fast 3D，需自备 GPU + 权重，见 docs/部署.md）。
+
+    stability-fast-3d 的具体加载/推理 API 随版本而变；本适配层在依赖就绪时
+    应在此对接官方示例。依赖缺失时给出清晰指引，不静默失败。
+    """
+    name = "sf3d"
+
+    def __init__(self, cfg, weights_dir: str = "SF3D"):
+        self.cfg = cfg
+        self.weights_dir = weights_dir
+        self._model = None
+
+    def _load(self):
+        try:
+            import sf3d  # stability-fast-3d
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError(
+                "未检测到 SF3D。AI 模式(SF3D)需要：\n"
+                "  pip install stability-fast-3d\n"
+                "  并准备 GPU 权重（放置于 models/" + self.weights_dir + "）\n"
+                "详见 docs/部署.md"
+            ) from e
+        # 依赖已装：按你安装的 stability-fast-3d 版本在此初始化推理管线。
+        # 不同版本入口不同（如 sf3d.pipelines / sf3d.apis），请对齐官方示例。
+        raise RuntimeError(
+            "SF3D 后端依赖已装，但加载调用需按你安装的 stability-fast-3d 版本对接"
+            "（见其官方示例），或先把权重放到 models/" + self.weights_dir
+        )
+
+    def generate(self, image: "Image.Image", **kwargs) -> "trimesh.Trimesh":
+        if self._model is None:
+            self._load()
+        out = self._model(image=image)
+        mesh = _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _apply_texture(mesh, bool(kwargs.get("enable_texture", False)),
+                              int(kwargs.get("texture_resolution", 1024)))
+        mesh, _note = _apply_remesh(mesh, kwargs.get("remesh", "none"))
+        return mesh
+
+
+class TrellisBackend(Backend):
+    """Trellis2 适配层（高质量结构化潜空间，需自备 GPU + 权重，见 docs/部署.md）。
+
+    与 SF3D 类似，Trellis 的具体推理 API 随版本而变；依赖就绪时在此对接。
+    """
+    name = "trellis"
+
+    def __init__(self, cfg, weights_dir: str = "Trellis2"):
+        self.cfg = cfg
+        self.weights_dir = weights_dir
+        self._model = None
+
+    def _load(self):
+        try:
+            import trellis  # trellis / trellis2 推理环境
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError(
+                "未检测到 Trellis。AI 模式(Trellis2)需要：\n"
+                "  按官方指引准备 trellis 推理环境与 GPU 权重\n"
+                "  （放置于 models/" + self.weights_dir + "）\n"
+                "详见 docs/部署.md"
+            ) from e
+        raise RuntimeError(
+            "Trellis2 后端依赖已装，但加载调用需按你安装的 trellis 版本对接"
+            "（见其官方示例），或先把权重放到 models/" + self.weights_dir
+        )
+
+    def generate(self, image: "Image.Image", **kwargs) -> "trimesh.Trimesh":
+        if self._model is None:
+            self._load()
+        out = self._model(image=image)
+        mesh = _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
+        mesh = _apply_texture(mesh, bool(kwargs.get("enable_texture", False)),
+                              int(kwargs.get("texture_resolution", 1024)))
+        mesh, _note = _apply_remesh(mesh, kwargs.get("remesh", "none"))
+        return mesh
 
 
 def get_backend(mode: str, cfg, model_id: str = ""):
     mode = (mode or "relief").lower()
     if mode in ("relief", "offline", "浮雕"):
         return ReliefBackend(cfg)
-    # AI 模式：若有 model_id（垂类动物园），按权重目录选择；否则按 mode 选默认权重
-    backend_name, weights_dir, _domain = resolve_model(model_id) if model_id else (None, None, None)
-    if mode in ("triposr", "tripo") or backend_name == "triposr":
-        return TripoSRBackend(cfg, weights_dir or "TripoSR")
-    # 默认 / hunyuan / 垂类（均为 hunyuan3d 底座）
-    return HunyuanBackend(cfg, weights_dir or "Hunyuan3D-2")
+    # AI 模式：若有 model_id（模型动物园），按条目路由；否则回退默认 hunyuan3d
+    entry = resolve_model_full(model_id) if model_id else resolve_model_full("")
+    backend_name = entry["backend"]
+    weights_dir = entry["weights"]
+    if backend_name == "triposr":
+        return TripoSRBackend(cfg, weights_dir)
+    if backend_name == "sf3d":
+        return Sf3dBackend(cfg, weights_dir)
+    if backend_name == "trellis":
+        return TrellisBackend(cfg, weights_dir)
+    # 默认 / hunyuan3d（含 Mini / Turbo / Fast 变体，通过 weights_dir + variant 区分）
+    variant = "turbo" if "turbo" in (model_id or "") else ("fast" if "fast" in (model_id or "") else "")
+    return HunyuanBackend(cfg, weights_dir, variant=variant)

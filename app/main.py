@@ -1,14 +1,21 @@
 """SnapPrint Web 后端（FastAPI）。
 
 路由：
-  GET  /                    中文 Web UI
+  GET  /                    纯静态 Web UI（与 surge 共用 web/，零双份维护）
   POST /api/generate        同步生成（浮雕模式秒级，保留向后兼容）
   POST /api/generate_async  异步生成 -> 立即返回 task_id（AI 模式耗时长时用）
   GET  /api/tasks/{id}      查询任务状态 / 分阶段进度 / 结果
   POST /api/batch           批量生成（多图 -> 多个异步任务）
   POST /api/analyze         可打印性 / 支撑建议分析
-  GET  /api/models          列出模型动物园（含本地权重可用性探测）
-  GET  /outputs/*           下载生成的 OBJ / PLY / 3MF
+  GET  /api/models          列出模型动物园（含本地权重可用性探测 + 速度/贴图标签）
+  GET  /outputs/*           下载生成的 OBJ / PLY / 3MF / GLB
+
+图生3D 生成参数（对齐 modly）：
+  model                模型动物园 id（sf3d / hunyuan3d / hunyuan3d-mini-turbo / triposg / trellis2 …）
+  remesh               none | triangle | quad（重网格化）
+  enable_texture       是否保留生成贴图（False 烘焙为顶点色，利于打印）
+  texture_resolution   贴图分辨率
+  params               JSON 字符串，模型专属推理参数
 
 可选安全（内网 / 小团队部署）：
   设置环境变量 SNAPRINT_API_KEY 启用 API Key 校验（请求头 X-API-Key）；
@@ -17,6 +24,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
@@ -26,17 +34,27 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from .config import DEFAULT_CONFIG, MODEL_ZOO, SnapConfig, _local_weights_present
 from .pipeline import run
 from . import advisor
 
 ROOT = Path(__file__).resolve().parent.parent
-FRONTEND = ROOT / "frontend"
+WEB = ROOT / "web"
 OUTPUTS = ROOT / "outputs"
 OUTPUTS.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SnapPrint · 咔印3D", version="0.3.0")
+app = FastAPI(title="SnapPrint · 咔印3D", version="0.5.0")
+
+# 允许跨域：让纯静态前端（如 surge 线上 Demo）能够把请求发到用户本地后端
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # 安全：可选 API Key 校验 + 内存令牌桶限流
@@ -113,7 +131,9 @@ def _files_to_download(job: str, stats: dict) -> dict:
     return download
 
 
-def _run_task(task_id, data, mode, model, cfg) -> None:
+def _run_task(task_id, data, mode, model, cfg, *,
+               remesh="none", enable_texture=False, texture_resolution=1024,
+               params=None) -> None:
     """后台线程执行体：跑流水线并把分阶段进度写进注册表。"""
 
     def cb(stage: str, pct: int) -> None:
@@ -124,6 +144,8 @@ def _run_task(task_id, data, mode, model, cfg) -> None:
         result = run(
             data, mode=mode, cfg=cfg, out_dir=out_dir, name="model",
             progress_cb=cb, model=model,
+            remesh=remesh, enable_texture=enable_texture,
+            texture_resolution=texture_resolution, params=params,
         )
         stats = result["stats"]
         download = _files_to_download(task_id, stats)
@@ -138,7 +160,9 @@ def _run_task(task_id, data, mode, model, cfg) -> None:
         _task_update(task_id, status="error", stage="失败", error=str(e))
 
 
-def _submit_task(data: bytes, mode: str, model: str, cfg: SnapConfig) -> str:
+def _submit_task(data: bytes, mode: str, model: str, cfg: SnapConfig, *,
+                 remesh="none", enable_texture=False, texture_resolution=1024,
+                 params=None) -> str:
     """提交一个生成任务到后台线程，返回 task_id。"""
     _task_prune()
     task_id = uuid.uuid4().hex[:12]
@@ -152,14 +176,14 @@ def _submit_task(data: bytes, mode: str, model: str, cfg: SnapConfig) -> str:
             "result": None,
             "error": None,
         }
-    threading.Thread(target=_run_task, args=(task_id, data, mode, model, cfg), daemon=True).start()
+    threading.Thread(
+        target=_run_task,
+        args=(task_id, data, mode, model, cfg),
+        kwargs=dict(remesh=remesh, enable_texture=enable_texture,
+                    texture_resolution=texture_resolution, params=params),
+        daemon=True,
+    ).start()
     return task_id
-
-
-@app.get("/", response_class=HTMLResponse)
-def index():
-    html = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
 
 
 @app.post("/api/generate")
@@ -167,6 +191,10 @@ async def generate(
     file: UploadFile = File(...),
     mode: str = Form("relief"),
     model: str = Form(""),
+    remesh: str = Form("none"),
+    enable_texture: bool = Form(False),
+    texture_resolution: int = Form(1024),
+    params: str = Form("{}"),
     tile_w: float = Form(60.0),
     tile_d: float = Form(60.0),
     base: float = Form(2.0),
@@ -181,7 +209,11 @@ async def generate(
     cfg = _build_cfg(tile_w=tile_w, tile_d=tile_d, base=base, relief=relief, target_tris=target_tris)
 
     try:
-        result = run(data, mode=mode, cfg=cfg, out_dir=OUTPUTS / "sync", name="model", model=model)
+        result = run(
+            data, mode=mode, cfg=cfg, out_dir=OUTPUTS / "sync", name="model", model=model,
+            remesh=remesh, enable_texture=enable_texture,
+            texture_resolution=texture_resolution, params=_parse_params(params),
+        )
     except Exception as e:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"生成失败: {e}")
 
@@ -195,6 +227,10 @@ async def generate_async(
     file: UploadFile = File(...),
     mode: str = Form("relief"),
     model: str = Form(""),
+    remesh: str = Form("none"),
+    enable_texture: bool = Form(False),
+    texture_resolution: int = Form(1024),
+    params: str = Form("{}"),
     tile_w: float = Form(60.0),
     tile_d: float = Form(60.0),
     base: float = Form(2.0),
@@ -208,7 +244,11 @@ async def generate_async(
 
     data = await file.read()
     cfg = _build_cfg(tile_w=tile_w, tile_d=tile_d, base=base, relief=relief, target_tris=target_tris)
-    task_id = _submit_task(data, mode, model, cfg)
+    task_id = _submit_task(
+        data, mode, model, cfg,
+        remesh=remesh, enable_texture=enable_texture,
+        texture_resolution=texture_resolution, params=_parse_params(params),
+    )
     return JSONResponse({"task_id": task_id})
 
 
@@ -217,6 +257,10 @@ async def batch_generate(
     files: list[UploadFile] = File(...),
     mode: str = Form("relief"),
     model: str = Form(""),
+    remesh: str = Form("none"),
+    enable_texture: bool = Form(False),
+    texture_resolution: int = Form(1024),
+    params: str = Form("{}"),
     _: None = Depends(guard),
 ):
     """批量生成：多张图片 -> 各自一个异步任务，返回 task_id 列表。"""
@@ -228,8 +272,23 @@ async def batch_generate(
     tids = []
     for f in files:
         data = await f.read()
-        tids.append(_submit_task(data, mode, model, cfg))
+        tids.append(_submit_task(
+            data, mode, model, cfg,
+            remesh=remesh, enable_texture=enable_texture,
+            texture_resolution=texture_resolution, params=_parse_params(params),
+        ))
     return JSONResponse({"count": len(tids), "task_ids": tids})
+
+
+def _parse_params(raw: str):
+    """把 params 表单字段（JSON 字符串）解析为 dict；非法则回退空字典。"""
+    if not raw:
+        return {}
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 
 @app.get("/api/tasks/{task_id}")
@@ -280,8 +339,12 @@ async def analyze_endpoint(
     return JSONResponse(rec)
 
 
-# 静态下载生成的文件
+# 静态下载生成的文件（注册在前，优先级高于根 "/" 挂载）
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
+
+# 纯静态前端：与 surge 线上 Demo 共用同一份 web/，避免双份维护。
+# html=True 时 "/" 自动返回 index.html，相对路径的 JS/CSS 也由此提供。
+app.mount("/", StaticFiles(directory=str(WEB), html=True), name="web")
 
 
 if __name__ == "__main__":

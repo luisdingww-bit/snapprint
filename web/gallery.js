@@ -260,19 +260,22 @@
     { name: "Cults3D",     url: "https://cults3d.com/zh",            desc: "设计师社区 · 免费+付费精品" }
   ];
 
-  /** 生成某个画廊条目的网格（依赖 SnapPrintCore） */
-  function buildItem(item, quality) {
+  /** 生成某个画廊条目的网格（依赖 SnapPrintCore）。
+   *  opt 可覆盖默认参数：{ quality, widthMM, depthMM, baseMM, reliefMM } */
+  function buildItem(item, opt) {
     var S = global.SnapPrintCore;
     if (!S) throw new Error("SnapPrintCore 未加载");
-    var cols = quality || 180, rows = cols;
+    opt = opt || {};
+    var quality = opt.quality || 180;
+    var cols = quality, rows = quality;
     var d = item.gen(cols, rows);
-    var opt = {
-      widthMM: item.opt.widthMM,
-      depthMM: item.opt.widthMM,
-      baseMM: item.opt.baseMM,
-      reliefMM: item.opt.reliefMM
+    var mopt = {
+      widthMM:  (opt.widthMM  != null) ? opt.widthMM  : item.opt.widthMM,
+      depthMM:  (opt.depthMM  != null) ? opt.depthMM  : item.opt.widthMM,
+      baseMM:   (opt.baseMM   != null) ? opt.baseMM   : item.opt.baseMM,
+      reliefMM: (opt.reliefMM != null) ? opt.reliefMM : item.opt.reliefMM
     };
-    var mesh = S.buildRelief(d.hts, cols, rows, d.cls, opt);
+    var mesh = S.buildRelief(d.hts, cols, rows, d.cls, mopt);
     mesh.name = item.id;
     return mesh;
   }

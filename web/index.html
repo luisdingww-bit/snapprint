@@ -118,6 +118,8 @@
     .dl button.primary:hover{background:var(--orange-dark);color:#fff}
 
     .hint{font-size:12px;color:var(--muted);margin-top:10px}
+    .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
+      padding-top:16px;border-top:1px dashed #f0c8b3}
     .hint a{color:var(--blue)}
     .err{font-size:12px;color:var(--orange-dark);margin-top:10px;white-space:pre-wrap}
     .hidden{display:none}
@@ -210,42 +212,7 @@
         </label>
 
         <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
-        <div class="seg" id="modeseg">
-          <button type="button" class="on" data-mode="relief">🖼 照片浮雕</button>
-          <button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>
-        </div>
-        <div class="mode-tip" id="modetip">按明暗生成起伏浮雕 —— 适合照片、风景、人像。</div>
-        <div class="row">
-          <div class="field">
-            <label>宽度 <span><span id="vw">60</span> mm</span></label>
-            <input type="range" id="tile_w" min="20" max="200" value="60" />
-          </div>
-          <div class="field" id="f_base">
-            <label>底座厚 <span><span id="vb">2</span> mm</span></label>
-            <input type="range" id="base" min="0.5" max="10" step="0.5" value="2" />
-          </div>
-        </div>
-        <div class="row">
-          <div class="field" id="f_relief">
-            <label>浮雕高 <span><span id="vr">4</span> mm</span></label>
-            <input type="range" id="relief" min="0.5" max="20" step="0.5" value="4" />
-          </div>
-          <div class="field">
-            <label>精细度 <span><span id="vq">160</span> 格</span></label>
-            <input type="range" id="quality" min="64" max="320" step="32" value="160" />
-          </div>
-        </div>
-        <div class="row hidden" id="f_extrude">
-          <div class="field">
-            <label>拉伸厚度 <span><span id="vh">5</span> mm</span></label>
-            <input type="range" id="ex_h" min="1" max="30" step="0.5" value="5" />
-          </div>
-          <div class="field">
-            <label>轮廓阈值 <span><span id="vt">50</span> %</span></label>
-            <input type="range" id="ex_t" min="5" max="95" step="5" value="50" />
-          </div>
-        </div>
-        <label class="chk"><input type="checkbox" id="invert" /> <span id="invlbl">反相（亮处凹陷，适合印章/模具）</span></label>
+        <div id="panel-top"></div>
 
         <button type="button" class="go" id="go" disabled>生成 3D 模型</button>
         <div class="hint" id="status">请先选择一张图片。</div>
@@ -275,6 +242,7 @@
             <button id="dl_glb">⬇ GLB（AR/网页）</button>
           </div>
           <div class="hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
+          <div id="panel-bottom" class="hidden"></div>
         </div>
       </div>
     </div>
@@ -316,35 +284,98 @@
 
   var S = window.SnapPrintCore;
   function $(id){ return document.getElementById(id); }
-  var img = null, mesh = null;
+  var img = null, mesh = null, galleryItem = null, dlName = "snapprint";
 
-  [["tile_w","vw"],["base","vb"],["relief","vr"],["quality","vq"],["ex_h","vh"],["ex_t","vt"]].forEach(function(p){
-    var el = $(p[0]); el.addEventListener("input", function(){ $(p[1]).textContent = el.value; });
-  });
-
-  /* —— 生成模式切换：照片浮雕 / 2D 轮廓拉伸 —— */
-  var genMode = "relief";
-  var modeTips = {
+  /* ── 共享参数状态：顶部面板 与 预览区面板 双向同步 ── */
+  var P = { mode:"relief", w:60, base:2, relief:4, q:160, exH:5, exT:50, invert:false, lockMode:false };
+  var FIELDS = [
+    { key:"w",      label:"宽度",     unit:"mm", min:20,  max:200, step:1,  grp:"all" },
+    { key:"base",   label:"底座厚",   unit:"mm", min:0.5, max:10,  step:0.5,grp:"relief" },
+    { key:"relief", label:"浮雕高",   unit:"mm", min:0.5, max:20,  step:0.5,grp:"relief" },
+    { key:"q",      label:"精细度",   unit:"格", min:64,  max:320, step:32, grp:"all" },
+    { key:"exH",    label:"拉伸厚度", unit:"mm", min:1,   max:30,  step:0.5,grp:"extrude" },
+    { key:"exT",    label:"轮廓阈值", unit:"%",  min:5,   max:95,  step:5,  grp:"extrude" }
+  ];
+  function fieldByKey(k){ for(var i=0;i<FIELDS.length;i++) if(FIELDS[i].key===k) return FIELDS[i]; }
+  function fieldVisible(f){ return f.grp==="all" || f.grp===P.mode; }
+  var MODE_TIPS = {
     relief:  "按明暗生成起伏浮雕 —— 适合照片、风景、人像。",
     extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。"
   };
-  var invTips = {
+  var INV_TIPS = {
     relief:  "反相（亮处凹陷，适合印章/模具）",
     extrude: "反相（改为提取亮色部分作为实体）"
   };
-  $("modeseg").addEventListener("click", function(e){
-    var btn = e.target.closest("button");
-    if(!btn) return;
-    genMode = btn.getAttribute("data-mode");
-    var bs = $("modeseg").querySelectorAll("button");
-    for(var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i] === btn);
-    $("modetip").textContent = modeTips[genMode];
-    $("invlbl").textContent = invTips[genMode];
-    var isEx = genMode === "extrude";
-    $("f_extrude").classList.toggle("hidden", !isEx);
-    $("f_base").classList.toggle("hidden", isEx);
-    $("f_relief").classList.toggle("hidden", isEx);
-  });
+
+  /* ── 构建控制面板（顶部 / 预览区 复用同一套逻辑） ── */
+  function buildPanel(side){
+    var cont = $("panel-"+side);
+    if(!cont) return;
+    cont.innerHTML = "";
+    if(side==="bottom"){
+      var hd = document.createElement("div");
+      hd.className = "rehead"; hd.textContent = "↻ 重新编辑参数并生成";
+      cont.appendChild(hd);
+    }
+    // 模式分段控件
+    var seg = document.createElement("div");
+    seg.className = "seg";
+    var segHtml = '<button type="button" data-mode="relief">🖼 照片浮雕</button>';
+    if(!P.lockMode) segHtml += '<button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>';
+    seg.innerHTML = segHtml;
+    seg.querySelectorAll("button").forEach(function(b){
+      if(b.getAttribute("data-mode")===P.mode) b.classList.add("on");
+      b.addEventListener("click", function(){ setMode(b.getAttribute("data-mode")); });
+    });
+    cont.appendChild(seg);
+    var tip = document.createElement("div");
+    tip.className = "mode-tip"; tip.textContent = MODE_TIPS[P.mode];
+    cont.appendChild(tip);
+
+    // 滑块行
+    function rowHTML(keys){
+      return '<div class="row">'+keys.map(function(k){
+        var f = fieldByKey(k);
+        return '<div class="field'+(fieldVisible(f)?"":" hidden")+'" data-f="'+k+'">'+
+          '<label>'+f.label+' <span><span class="pv">'+P[k]+'</span> '+f.unit+'</span></label>'+
+          '<input type="range" min="'+f.min+'" max="'+f.max+'" step="'+f.step+'" value="'+P[k]+'" /></div>';
+      }).join("")+'</div>';
+    }
+    cont.insertAdjacentHTML("beforeend",
+      rowHTML(["w","q"]) + rowHTML(["base","relief"]) + rowHTML(["exH","exT"]));
+
+    // 反相
+    var chk = document.createElement("label");
+    chk.className = "chk";
+    chk.innerHTML = '<input type="checkbox"'+(P.invert?" checked":"")+' /> <span>'+INV_TIPS[P.mode]+'</span>';
+    chk.querySelector("input").addEventListener("change", function(e){ P.invert = e.target.checked; regen(); });
+    cont.appendChild(chk);
+
+    // 滑块事件：更新状态 + 双向同步数值显示 + 防抖重新生成
+    cont.querySelectorAll('input[type=range]').forEach(function(el){
+      el.addEventListener("input", function(){
+        var k = el.closest(".field").getAttribute("data-f");
+        P[k] = parseFloat(el.value);
+        document.querySelectorAll('[data-f="'+k+'"] .pv').forEach(function(s){ s.textContent = el.value; });
+        regenDebounced();
+      });
+    });
+
+    // 预览区额外按钮
+    if(side==="bottom"){
+      var btn = document.createElement("button");
+      btn.type = "button"; btn.className = "go"; btn.textContent = "重新生成";
+      btn.addEventListener("click", regen);
+      cont.appendChild(btn);
+    }
+  }
+
+  function setMode(m){
+    if(P.lockMode && m!=="relief") return;
+    P.mode = m;
+    buildPanel("top"); buildPanel("bottom");
+    regen();
+  }
 
   var drop = $("drop");
   $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
@@ -364,6 +395,8 @@
     var im = new Image();
     im.onload = function(){
       img = im;
+      galleryItem = null; P.lockMode = false;
+      buildPanel("top"); buildPanel("bottom");
       drop.innerHTML = "已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />" +
         "<input type=\"file\" id=\"file\" accept=\"image/*\" />";
       $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
@@ -374,67 +407,77 @@
     im.src = url;
   }
 
-  $("go").addEventListener("click", function(){
-    if(!img || !S) return;
-    $("go").disabled = true;
+  /* ── 生成（统一读取共享状态 P；图片 或 画廊模型 皆可） ── */
+  function generate(){
+    if(!S) return;
+    if(!img && !galleryItem) return;
     $("status").textContent = "生成中…";
     setTimeout(function(){                      // 让 UI 先刷新
       try{
         var t0 = performance.now();
-        var q = parseInt($("quality").value, 10);
-        var aspect = img.naturalHeight / img.naturalWidth;
-        var cols = q, rows = Math.max(16, Math.round(q * aspect));
-        var cv = document.createElement("canvas");
-        cv.width = cols; cv.height = rows;
-        var ctx = cv.getContext("2d", { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, cols, rows);
-        var px = ctx.getImageData(0, 0, cols, rows).data;
-        var n = rows * cols, hts = new Array(n), cls = new Array(n);
-        var invert = $("invert").checked;
-        for(var i = 0; i < n; i++){
-          var R = px[i*4], G = px[i*4+1], B = px[i*4+2];
-          var g = (0.299*R + 0.587*G + 0.114*B) / 255;
-          hts[i] = invert ? 1 - g : g;
-          cls[i] = [R, G, B];
-        }
-        var W = parseFloat($("tile_w").value);
-        if(genMode === "extrude"){
-          // 2D 转 3D：按阈值二值化 → 轮廓拉伸成实体
-          // 语义：默认取"比阈值更暗"的像素为实体（Logo/线稿通常深色）；反相则取更亮的
-          var thr = parseInt($("ex_t").value, 10) / 100;
-          var msk = new Array(n);
-          for(i = 0; i < n; i++){
-            var gray = invert ? 1 - hts[i] : hts[i];     // hts 已含反相，这里还原原始灰度
-            msk[i] = invert ? (gray > thr) : (gray < thr);
-          }
-          mesh = S.buildExtrude(msk, cols, rows, cls, {
-            widthMM: W,
-            depthMM: Math.round(W * aspect * 10) / 10,
-            heightMM: parseFloat($("ex_h").value)
+        if(galleryItem){
+          mesh = window.SnapPrintGallery.buildItem(galleryItem, {
+            quality: P.q, widthMM: P.w, depthMM: P.w, baseMM: P.base, reliefMM: P.relief
           });
-          dlName = "snapprint-extrude";
+          dlName = "snapprint-" + galleryItem.id;
         }else{
-          var opt = {
-            widthMM: W,
-            depthMM: Math.round(W * aspect * 10) / 10,
-            baseMM: parseFloat($("base").value),
-            reliefMM: parseFloat($("relief").value)
-          };
-          mesh = S.buildRelief(hts, cols, rows, cls, opt);
-          dlName = "snapprint";
+          var aspect = img.naturalHeight / img.naturalWidth;
+          var cols = P.q, rows = Math.max(16, Math.round(P.q * aspect));
+          var cv = document.createElement("canvas");
+          cv.width = cols; cv.height = rows;
+          var ctx = cv.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, cols, rows);
+          var px = ctx.getImageData(0, 0, cols, rows).data;
+          var n = rows * cols, hts = new Array(n), cls = new Array(n);
+          for(var i = 0; i < n; i++){
+            var R = px[i*4], G = px[i*4+1], B = px[i*4+2];
+            var g = (0.299*R + 0.587*G + 0.114*B) / 255;
+            hts[i] = P.invert ? 1 - g : g;
+            cls[i] = [R, G, B];
+          }
+          var W = P.w;
+          if(P.mode === "extrude"){
+            var thr = P.exT / 100;
+            var msk = new Array(n);
+            for(i = 0; i < n; i++){
+              var gray = P.invert ? 1 - hts[i] : hts[i];   // 还原原始灰度
+              msk[i] = P.invert ? (gray > thr) : (gray < thr);
+            }
+            mesh = S.buildExtrude(msk, cols, rows, cls, {
+              widthMM: W,
+              depthMM: Math.round(W * aspect * 10) / 10,
+              heightMM: P.exH
+            });
+            dlName = "snapprint-extrude";
+          }else{
+            mesh = S.buildRelief(hts, cols, rows, cls, {
+              widthMM: W,
+              depthMM: Math.round(W * aspect * 10) / 10,
+              baseMM: P.base,
+              reliefMM: P.relief
+            });
+            dlName = "snapprint";
+          }
         }
         var st = S.stats(mesh.V, mesh.F);
         renderStats(st);
         render3D(mesh);
+        $("panel-bottom").classList.remove("hidden");
         var ms = Math.round(performance.now() - t0);
         $("status").textContent = "完成 ✅（耗时 " + ms + " ms，全程本地计算）";
       }catch(e){
         $("status").textContent = "错误：" + e.message;
-      }finally{
-        $("go").disabled = false;
       }
     }, 30);
-  });
+  }
+  var _rt = null;
+  function regenDebounced(){ clearTimeout(_rt); _rt = setTimeout(generate, 120); }
+  function regen(){ generate(); }
+
+  // 初始化两套面板，并连接主生成按钮
+  buildPanel("top");
+  buildPanel("bottom");
+  $("go").addEventListener("click", generate);
 
   function renderStats(st){
     $("result").classList.remove("hidden");
@@ -561,7 +604,6 @@
     a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
   }
-  var dlName = "snapprint";
   $("dl_stl").addEventListener("click", function(){ if(mesh) save(dlName + ".stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
   $("dl_obj").addEventListener("click", function(){ if(mesh) save(dlName + ".obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
   $("dl_ply").addEventListener("click", function(){ if(mesh) save(dlName + ".ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
@@ -592,22 +634,14 @@
         var all = grid.querySelectorAll(".g-card");
         for(var i = 0; i < all.length; i++) all[i].classList.remove("active");
         card.classList.add("active");
+        // 用模型自带默认参数初始化共享状态，锁定为浮雕模式，然后统一生成
+        galleryItem = item;
+        P.lockMode = true; P.mode = "relief";
+        P.w = item.opt.widthMM; P.base = item.opt.baseMM; P.relief = item.opt.reliefMM; P.q = 180;
+        buildPanel("top"); buildPanel("bottom");
         $("status").textContent = "正在生成「" + item.name + "」…";
-        setTimeout(function(){
-          try{
-            var t0 = performance.now();
-            mesh = G.buildItem(item, 180);
-            dlName = "snapprint-" + item.id;
-            var st = S.stats(mesh.V, mesh.F);
-            renderStats(st);
-            render3D(mesh);
-            $("status").textContent = "「" + item.name + "」完成 ✅（" +
-              Math.round(performance.now() - t0) + " ms）预览可旋转，下方按钮下载。";
-            $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
-          }catch(e){
-            $("status").textContent = "错误：" + e.message;
-          }
-        }, 30);
+        generate();
+        $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
       });
       grid.appendChild(card);
     });

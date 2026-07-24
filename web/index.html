@@ -191,15 +191,16 @@
   <!-- Hero -->
   <div class="hero">
     <div class="hero-in">
-      <h1>一张照片 / 一个 Logo / 一句参数，变成<em>可打印的 3D 模型</em></h1>
-      <p>照片浮雕 + 2D 轮廓拉伸 + 真实3D几何三模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
+      <h1>一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em></h1>
+      <p>照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入四模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
       <div class="chips">
         <span class="chip">✓ 数据不出本机</span>
         <span class="chip">✓ 照片浮雕</span>
         <span class="chip">✓ 2D 轮廓拉伸</span>
         <span class="chip">✓ 真实3D几何</span>
+        <span class="chip">✓ 导入 STL/OBJ/PLY/GLB</span>
+        <span class="chip">✓ 格式互转 & 毫米缩放</span>
         <span class="chip">✓ 水密可切片</span>
-        <span class="chip">✓ 4 种导出格式</span>
         <span class="chip">✓ 开源 Apache-2.0</span>
       </div>
     </div>
@@ -208,11 +209,11 @@
   <div class="wrap">
     <div class="cols" id="make">
       <div class="card">
-        <h2><span class="num">1</span>选择图片<span style="font-size:12px;font-weight:600;color:var(--muted)">（真实3D模型模式无需图片）</span></h2>
-        <p class="sub">照片、Logo、剪影、手绘线稿都可以 —— 图片只在你的浏览器里处理，不会上传到任何服务器。想直接生成花瓶、宝石、球、圆环等立体几何？在下方切到「🧊 真实3D模型」。</p>
+        <h2><span class="num">1</span>选择文件<span style="font-size:12px;font-weight:600;color:var(--muted)">（图片 或 3D 模型；真实3D模式无需文件）</span></h2>
+        <p class="sub">照片、Logo、剪影、手绘线稿 → 生成 3D；也可以直接上传你自己的 <b>STL / OBJ / PLY / GLB 模型</b> → 预览、按毫米缩放、转换格式下载。文件只在你的浏览器里处理，不会上传到任何服务器。</p>
         <label class="drop" id="drop">
-          点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b>
-          <input type="file" id="file" accept="image/*" />
+          点击选择，或把文件拖到这里<br><b>图片 JPG / PNG · 模型 STL / OBJ / PLY / GLB</b>
+          <input type="file" id="file" accept="image/*,.stl,.obj,.ply,.glb" />
         </label>
 
         <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
@@ -280,6 +281,7 @@
 <script src="vendor/three.min.js"></script>
 <script src="gallery.js"></script>
 <script src="shapes3d.js"></script>
+<script src="modelio.js"></script>
 <script src="app.js"></script>
 <script>
   window.addEventListener("error", function(e){
@@ -290,10 +292,11 @@
   var S = window.SnapPrintCore;
   function $(id){ return document.getElementById(id); }
   var img = null, mesh = null, galleryItem = null, dlName = "snapprint";
+  var impMesh = null, impName = "";   // 用户上传的 3D 模型（原始网格，未缩放）
 
   /* ── 共享参数状态：顶部面板 与 预览区面板 双向同步 ── */
   var P = { mode:"relief", w:60, base:2, relief:4, q:160, exH:5, exT:50, invert:false, lockMode:false,
-            shape:"vase", s3H:120, s3D:80, s3Seg:120, s3Tw:0, s3Lobe:0 };
+            shape:"vase", s3H:120, s3D:80, s3Seg:120, s3Tw:0, s3Lobe:0, impW:80 };
   var FIELDS = [
     { key:"w",      label:"宽度",     unit:"mm", min:20,  max:200, step:1,  grp:"img" },
     { key:"base",   label:"底座厚",   unit:"mm", min:0.5, max:10,  step:0.5,grp:"relief" },
@@ -305,7 +308,8 @@
     { key:"s3D",    label:"直径",     unit:"mm", min:10,  max:200, step:1,  grp:"solid3d" },
     { key:"s3Seg",  label:"圆周分段", unit:"段", min:8,   max:160, step:4,  grp:"solid3d" },
     { key:"s3Tw",   label:"扭转",     unit:"°",  min:0,   max:720, step:10, grp:"solid3d" },
-    { key:"s3Lobe", label:"棱数",     unit:"棱", min:0,   max:12,  step:1,  grp:"solid3d" }
+    { key:"s3Lobe", label:"棱数",     unit:"棱", min:0,   max:12,  step:1,  grp:"solid3d" },
+    { key:"impW",   label:"最大边长", unit:"mm", min:10,  max:250, step:1,  grp:"import" }
   ];
   function fieldByKey(k){ for(var i=0;i<FIELDS.length;i++) if(FIELDS[i].key===k) return FIELDS[i]; }
   function fieldVisible(f){
@@ -315,7 +319,8 @@
   var MODE_TIPS = {
     relief:  "按明暗生成起伏浮雕 —— 适合照片、风景、人像。",
     extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。",
-    solid3d: "无需照片，直接参数化生成真实立体几何（旋转体 / 圆环）—— 花瓶、宝石、球、圆环、棋子…"
+    solid3d: "无需照片，直接参数化生成真实立体几何（旋转体 / 圆环）—— 花瓶、宝石、球、圆环、棋子…",
+    import:  "上传你自己的 STL / OBJ / PLY / GLB 模型 —— 预览、按毫米缩放，并转换成任意其他格式下载。"
   };
   var INV_TIPS = {
     relief:  "反相（亮处凹陷，适合印章/模具）",
@@ -339,6 +344,7 @@
     if(!P.lockMode){
       segHtml += '<button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>';
       segHtml += '<button type="button" data-mode="solid3d">🧊 真实3D模型</button>';
+      segHtml += '<button type="button" data-mode="import">📦 导入模型</button>';
     }
     seg.innerHTML = segHtml;
     seg.querySelectorAll("button").forEach(function(b){
@@ -371,12 +377,24 @@
           '<input type="range" min="'+f.min+'" max="'+f.max+'" step="'+f.step+'" value="'+P[k]+'" /></div>';
       }).join("")+'</div>';
     }
+    // 导入模式：显示当前已上传的模型信息 / 上传引导
+    if(P.mode==="import"){
+      var info = document.createElement("div");
+      info.className = "mode-tip";
+      info.innerHTML = impMesh
+        ? '已导入：<b style="color:var(--txt)">' + impName + '</b>（' + impMesh.F.length.toLocaleString() +
+          ' 面' + (impMesh.C ? '，带顶点色' : '') + '）—— 拖动下方滑块即可缩放'
+        : '请在左侧「选择文件」区上传 <b style="color:var(--txt)">STL / OBJ / PLY / GLB</b> 模型文件。';
+      cont.appendChild(info);
+    }
+
     cont.insertAdjacentHTML("beforeend",
       rowHTML(["w","q"]) + rowHTML(["base","relief"]) + rowHTML(["exH","exT"]) +
-      rowHTML(["s3H","s3D"]) + rowHTML(["s3Seg","s3Tw"]) + rowHTML(["s3Lobe"]));
+      rowHTML(["s3H","s3D"]) + rowHTML(["s3Seg","s3Tw"]) + rowHTML(["s3Lobe"]) +
+      rowHTML(["impW"]));
 
-    // 反相（真实3D 模式不需要）
-    if(P.mode!=="solid3d"){
+    // 反相（真实3D / 导入模式不需要）
+    if(P.mode!=="solid3d" && P.mode!=="import"){
       var chk = document.createElement("label");
       chk.className = "chk";
       chk.innerHTML = '<input type="checkbox"'+(P.invert?" checked":"")+' /> <span>'+INV_TIPS[P.mode]+'</span>';
@@ -410,6 +428,10 @@
       galleryItem = null;                 // 真实3D 不依赖图片/画廊条目
       $("go").disabled = false;
       if(!P.shape) P.shape = "vase";
+    }else if(m==="import"){
+      galleryItem = null;
+      $("go").disabled = !impMesh;
+      if(!impMesh) $("status").textContent = "请上传一个 STL / OBJ / PLY / GLB 模型文件（左侧选择文件区）。";
     }else{
       $("go").disabled = !img;
     }
@@ -440,18 +462,31 @@
     if(e.dataTransfer.files && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
   });
 
+  var FILE_ACCEPT = "image/*,.stl,.obj,.ply,.glb";
+  function isModelFile(f){
+    var ext = (f.name.split(".").pop() || "").toLowerCase();
+    return ["stl","obj","ply","glb","gltf"].indexOf(ext) !== -1;
+  }
+  function rebindDrop(html){
+    drop.innerHTML = html + "<input type=\"file\" id=\"file\" accept=\"" + FILE_ACCEPT + "\" />";
+    $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+  }
+
   function pick(f){
-    if(!f || !f.type || f.type.indexOf("image/") !== 0){ $("status").textContent = "请选择图片文件。"; return; }
+    if(!f){ return; }
+    if(isModelFile(f)){ pickModel(f); return; }
+    if(!f.type || f.type.indexOf("image/") !== 0){
+      $("status").textContent = "请选择图片（JPG/PNG）或模型文件（STL/OBJ/PLY/GLB）。";
+      return;
+    }
     var url = URL.createObjectURL(f);
     var im = new Image();
     im.onload = function(){
       img = im;
       galleryItem = null; P.lockMode = false;
-      if(P.mode==="solid3d") P.mode = "relief";   // 选图后切回浮雕模式
+      if(P.mode==="solid3d" || P.mode==="import") P.mode = "relief";   // 选图后切回浮雕模式
       buildPanel("top"); buildPanel("bottom");
-      drop.innerHTML = "已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />" +
-        "<input type=\"file\" id=\"file\" accept=\"image/*\" />";
-      $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+      rebindDrop("已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />");
       $("go").disabled = false;
       $("status").textContent = "就绪，点击生成（全程在你的浏览器里，不上传任何数据）。";
     };
@@ -459,15 +494,51 @@
     im.src = url;
   }
 
+  /** 上传自己的 3D 模型：解析 → 切到导入模式 → 立即预览 */
+  function pickModel(f){
+    if(!window.SnapPrintIO){ $("status").textContent = "模型解析模块未加载。"; return; }
+    $("status").textContent = "正在解析模型「" + f.name + "」…";
+    var fr = new FileReader();
+    fr.onload = function(){
+      try{
+        var m = window.SnapPrintIO.parse(f.name, fr.result);
+        impMesh = m;
+        impName = f.name;
+        galleryItem = null; P.lockMode = false;
+        P.mode = "import";
+        // 默认最大边长：取原始尺寸最长边（夹在滑块范围内），即"保持原尺寸"
+        var st0 = S.stats(m.V, m.F);
+        var longest = Math.max(st0.size_mm[0], st0.size_mm[1], st0.size_mm[2]);
+        P.impW = Math.max(10, Math.min(250, Math.round(longest) || 80));
+        dlName = "snapprint-" + f.name.replace(/\.[^.]+$/, "");
+        buildPanel("top"); buildPanel("bottom");
+        rebindDrop("已导入模型：<b>" + f.name + "</b><br>" +
+          '<span style="font-size:12px">' + m.F.length.toLocaleString() + " 面 · 原始尺寸 " +
+          st0.size_mm.map(function(x){ return x.toFixed(1); }).join(" × ") + " mm" +
+          (m.C ? " · 带顶点色" : "") + "</span>");
+        $("go").disabled = false;
+        generate();
+      }catch(e){
+        $("status").textContent = "模型解析失败：" + e.message;
+      }
+    };
+    fr.onerror = function(){ $("status").textContent = "文件读取失败，请重试。"; };
+    fr.readAsArrayBuffer(f);
+  }
+
   /* ── 生成（统一读取共享状态 P；图片 或 画廊模型 皆可） ── */
   function generate(){
     if(!S) return;
-    if(P.mode!=="solid3d" && !img && !galleryItem) return;
+    if(P.mode==="import" && !impMesh) return;
+    if(P.mode!=="solid3d" && P.mode!=="import" && !img && !galleryItem) return;
     $("status").textContent = "生成中…";
     setTimeout(function(){                      // 让 UI 先刷新
       try{
         var t0 = performance.now();
-        if(P.mode==="solid3d"){
+        if(P.mode==="import"){
+          mesh = window.SnapPrintIO.normalize(impMesh, P.impW);
+          // dlName 已在 pickModel 里设置
+        }else if(P.mode==="solid3d"){
           if(!window.SnapPrint3D) throw new Error("真实3D 模块未加载");
           mesh = window.SnapPrint3D.build(P.shape, {
             H: P.s3H, D: P.s3D, seg: P.s3Seg, twist: P.s3Tw, lobes: P.s3Lobe

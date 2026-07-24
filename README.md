@@ -78,19 +78,46 @@ snapprint/
 ├── app/
 │   ├── main.py          # FastAPI Web 后端
 │   ├── pipeline.py       # 主流水线入口 run()
+│   ├── advisor.py        # 可打印性 / 支撑建议分析
 │   ├── backends.py       # 离线浮雕 + AI 模式适配层
 │   ├── postprocess.py    # 水密/减面/摆正/缩放/导出（打印护城河）
 │   └── config.py         # 默认参数（毫米级）
 ├── frontend/index.html   # 中文 Web UI（零构建）
+├── web/                  # 纯浏览器版（surge 托管）：五模式 + 模型库 + 切片预设
+├── blender/SnapPrintBlender/  # Blender 插件（调本地后端）
+├── comfyui/SnapPrintNode/     # ComfyUI 自定义节点
 ├── scripts/              # 一键启动脚本
 ├── docs/                 # 部署 / 贡献 / 路线图
 ├── outputs/              # 生成的 3D 文件
 └── Dockerfile / docker-compose.yml
 ```
 
+## 集成：Blender 插件 / ComfyUI 节点
+
+SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，枢纽是**本地后端**
+（`python scripts/start_backend.py` → `http://localhost:8000`），提供：
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/generate_async` | 提交生成，立即返回 `task_id` |
+| `GET  /api/tasks/{id}` | 轮询状态 / 分阶段进度 / 结果（含下载链接） |
+| `POST /api/analyze` | 上传图片或网格（stl/obj/ply/3mf），返回可打印性 / 支撑建议 JSON |
+
+### Blender 插件
+1. 先把 `blender/SnapPrintBlender/` 整个文件夹复制到 Blender 的 `scripts/addons/` 目录；
+2. 编辑 → 偏好设置 → 插件 → 搜索 `SnapPrint` → 启用；
+3. 右侧栏出现 **SnapPrint** 面板：填本地后端地址、选图片与模式，点「从图片生成浮雕」即自动生成并导入网格；选中网格点「分析可打印性 / 支撑」查看层高、填充、支撑（类型/密度/阈值）与摆放建议。
+
+### ComfyUI 节点
+1. 把 `comfyui/SnapPrintNode/` 整个文件夹放入 ComfyUI 的 `custom_nodes/` 目录，重启 ComfyUI；
+2. 节点搜索 `SnapPrint` 即可看到 **SnapPrint 生成 (图片→3D)** 与 **SnapPrint 分析 (可打印性)**；
+3. 前者接收 `IMAGE` 输出网格文件路径（可串联后续 3D 节点），后者输出支撑/切片建议 JSON。
+
+> 所有集成共享同一套几何口径（悬垂角阈值 45°、支撑密度/类型、Brim、层高/填充），与 Web 切片预设面板一致。
+
 ## 路线图
 
-见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）已全部完成 ✅；下一步 v0.3：自动支撑建议、Blender/ComfyUI 插件。
+见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）与 v0.3（自动支撑建议 / Blender 插件 / ComfyUI 节点）均已完成 ✅。
 
 ## 许可证
 

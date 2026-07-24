@@ -85,13 +85,26 @@
     /* —— 推荐规则 —— */
     // 支撑：浮雕/拉伸天然自支撑；其它看悬垂面积占比
     var supports = false, supportReason = "自支撑几何，无需支撑";
+    var supportDensity = 0, supportType = "none";
     if (mode !== "relief" && mode !== "extrude") {
       if (overhangRatio > 0.03) {
         supports = true;
         supportReason = "悬垂(>45°)面积占 " + (overhangRatio * 100).toFixed(1) + "%，建议开启支撑";
+        if (overhangRatio > 0.20) supportDensity = 0.30;
+        else if (overhangRatio > 0.10) supportDensity = 0.20;
+        else supportDensity = 0.15;
+        supportType = overhangRatio > 0.15 ? "tree" : "normal";
       } else {
         supportReason = "悬垂面积仅 " + (overhangRatio * 100).toFixed(1) + "%，可免支撑";
       }
+    }
+
+    // 摆放建议
+    var orientationAdvice = "";
+    if (supports) {
+      orientationAdvice = "若可，将悬垂特征旋转至 45° 以内或朝下，可显著减少支撑用量与后处理。";
+    } else if (contactRatio < 0.15) {
+      orientationAdvice = "平放最宽面朝下以增大贴床接触，或加 brim / raft 防翘边。";
     }
 
     // 层高：小件/浮雕细节 → 0.12；常规 → 0.2
@@ -121,11 +134,14 @@
       volume_cm3: volumeCm3,
       overhang_ratio: overhangRatio,
       contact_ratio: contactRatio,
+      tall_ratio: tallRatio,
       layer_height: layer, layer_why: layerWhy,
       first_layer_height: Math.max(layer, 0.2),
       infill: infill,
       perimeters: 2, top_layers: 4, bottom_layers: 3,
       supports: supports, support_reason: supportReason,
+      support_density: supportDensity, support_type: supportType,
+      support_threshold_deg: 45, orientation_advice: orientationAdvice,
       brim_mm: brim, brim_why: brimWhy,
       solid_factor: solidFactor
     };

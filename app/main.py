@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import SnapConfig
 from .pipeline import run
+from . import advisor
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
@@ -191,6 +192,33 @@ def task_status(task_id: str):
 
 # 静态下载生成的文件
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
+
+
+@app.post("/api/analyze")
+async def analyze_endpoint(
+    file: UploadFile = File(...),
+    mode: str = Form("relief"),
+    printer: str = Form(""),
+):
+    """可打印性 / 支撑建议分析。
+
+    上传图片（走浮雕生成）或网格文件（stl/obj/ply/3mf/glb/off），
+    返回结构化切片与支撑建议 JSON（供 Blender / ComfyUI / Web 复用）。
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="请上传文件")
+    data = await file.read()
+    try:
+        rec = advisor.analyze_upload(
+            data,
+            mode=mode,
+            filename=file.filename or "",
+            printer=printer,
+            content_type=file.content_type or "",
+        )
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"分析失败: {e}")
+    return JSONResponse(rec)
 
 
 if __name__ == "__main__":

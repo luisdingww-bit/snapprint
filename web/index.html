@@ -134,9 +134,19 @@
     .p-chips .pc{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:999px;
       padding:4px 11px;color:var(--txt)}
     .p-chips .pc b{color:var(--orange)}
+    .p-support{font-size:12px;line-height:1.7;color:var(--txt);background:#fbf6f1;
+      border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-top:8px}
+    .p-support b{color:var(--orange)}
+    .p-support.ok{border-color:rgba(46,160,67,.35);background:rgba(46,160,67,.06)}
+    .p-support.warn{border-color:rgba(250,104,49,.35);background:rgba(250,104,49,.06)}
     .p-warn{font-size:12px;font-weight:700;color:#c0392b;background:rgba(250,104,49,.08);
       border:1px solid rgba(250,104,49,.3);border-radius:9px;padding:8px 12px;margin-top:10px}
     .preset .dl{margin-top:12px}
+    .p-blender{margin-top:10px}
+    .p-blender button{width:100%;font:inherit;font-size:13px;font-weight:700;color:#1f6feb;
+      background:#eef4ff;border:1px solid #c5d8ff;border-radius:9px;padding:9px 12px;cursor:pointer}
+    .p-blender button:hover{background:#e2ecff}
+    .p-blender .hint{margin-top:7px}
 
     .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
       padding-top:16px;border-top:1px dashed #f0c8b3}
@@ -317,10 +327,15 @@
               <select id="pr_mat" title="材料"></select>
             </div>
             <div class="p-chips" id="pr_chips"></div>
+            <div class="p-support" id="pr_support"></div>
             <div class="p-warn hidden" id="pr_warn"></div>
             <div class="dl">
               <button id="pr_ini" class="primary">⬇ 预设 .ini（PrusaSlicer / Orca 可导入）</button>
               <button id="pr_txt">⬇ 参数卡 .txt</button>
+            </div>
+            <div class="p-blender">
+              <button id="dl_blender">🧊 在 Blender 中打开（下载 OBJ）</button>
+              <div class="hint hidden" id="blender_tip">已下载 .obj，用 Blender 直接打开即可；或在 Blender 内安装 SnapPrint 插件后，可「从图片一键生成」并做支撑分析。详见 README「集成」章节。</div>
             </div>
           </div>
 
@@ -1022,6 +1037,19 @@
         "估算 ≈<b>" + est.grams.toFixed(0) + "g</b> · <b>" + (est.minutes / 60).toFixed(1) + "h</b>"
       ];
       $("pr_chips").innerHTML = chips.map(function(c){ return '<span class="pc">' + c + '</span>'; }).join("");
+      var sup = $("pr_support");
+      var typeLabel = rec.support_type === "tree" ? "树状(tree)" : "普通(normal)";
+      var densityLabel = rec.supports ? (rec.support_density * 100).toFixed(0) + "%" : "—";
+      if (rec.supports) {
+        sup.className = "p-support warn";
+        sup.innerHTML = "🛠 <b>支撑建议</b>：" + rec.support_reason +
+          "｜类型 <b>" + typeLabel + "</b>｜密度 <b>" + densityLabel + "</b>｜阈值 " + rec.support_threshold_deg + "°" +
+          (rec.orientation_advice ? "<br>💡 " + rec.orientation_advice : "");
+      } else {
+        sup.className = "p-support ok";
+        sup.innerHTML = "✅ " + rec.support_reason +
+          (rec.orientation_advice ? "<br>💡 " + rec.orientation_advice : "");
+      }
       var warn = $("pr_warn");
       if(!f.ok){
         warn.classList.remove("hidden");
@@ -1040,6 +1068,12 @@
     $("pr_txt").addEventListener("click", function(){
       if(!mesh || !rec) return;
       save(dlName + "-print-card.txt", PR.exportTXT(rec, selP.value, selM.value, dlName), "text/plain");
+    });
+    $("dl_blender").addEventListener("click", function(){
+      if(!mesh){ alert("请先生成模型，再在 Blender 中打开。"); return; }
+      var S = window.SnapPrintCore;
+      save(dlName + ".obj", S.exportOBJ(mesh.V, mesh.F), "text/plain");
+      $("blender_tip").classList.remove("hidden");
     });
     window._presetRefresh = refresh;
   })();

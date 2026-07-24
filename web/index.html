@@ -4,163 +4,282 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SnapPrint · 咔印3D — 照片转可打印 3D 模型（纯浏览器版）</title>
-  <meta name="description" content="上传一张照片，浏览器里直接生成水密可打印的 3D 浮雕模型，导出 STL/OBJ/PLY。零安装、零后端、开源 Apache-2.0。" />
+  <meta name="description" content="上传一张照片，浏览器里直接生成水密可打印的 3D 浮雕模型，导出 STL/OBJ/PLY/GLB。零安装、零后端、开源 Apache-2.0。" />
   <style>
     :root{
-      --bg:#0f1115; --panel:#171a21; --line:#262b36; --txt:#e8ecf3;
-      --muted:#9aa4b2; --accent:#ff5a3c; --accent2:#3ddc97; --blue:#5b9dff;
+      --orange:#fa6831; --orange-dark:#e5551f; --orange-soft:#fff1ea;
+      --bg:#f5f5f7; --card:#ffffff; --line:#e6e6ea;
+      --txt:#1c1c1e; --muted:#8a8a93; --green:#12a854; --blue:#2e6fd8;
+      --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
+      --shadow-hover:0 6px 22px rgba(0,0,0,.12);
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    html{scroll-behavior:smooth}
+    body{margin:0;font-family:"Inter",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
       background:var(--bg);color:var(--txt);line-height:1.6}
-    header{padding:22px 28px;border-bottom:1px solid var(--line);display:flex;
-      align-items:center;gap:14px;flex-wrap:wrap}
-    header .logo{font-size:26px;font-weight:800;letter-spacing:.5px}
-    header .logo b{color:var(--accent)}
-    header .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);
-      padding:2px 8px;border-radius:999px}
-    header a{color:var(--blue);font-size:13px;text-decoration:none;margin-left:auto}
-    .wrap{max-width:1080px;margin:0 auto;padding:24px;display:grid;
-      grid-template-columns:1fr 1fr;gap:20px}
-    @media(max-width:820px){.wrap{grid-template-columns:1fr}}
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
-    h2{margin:0 0 14px;font-size:16px}
-    .drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:34px 16px;
-      text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
-    .drop:hover{border-color:var(--accent);color:var(--txt);background:#1b1e26}
+
+    /* ── 顶部导航（Printables 风格：白底 sticky + 橙色 CTA） ── */
+    .nav{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);
+      box-shadow:0 1px 2px rgba(0,0,0,.03)}
+    .nav-in{max-width:1200px;margin:0 auto;padding:0 24px;height:60px;
+      display:flex;align-items:center;gap:26px}
+    .logo{display:flex;align-items:center;gap:9px;font-size:20px;font-weight:800;
+      letter-spacing:.2px;text-decoration:none;color:var(--txt)}
+    .logo .mark{width:30px;height:30px;border-radius:8px;background:var(--orange);
+      display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:900}
+    .logo b{color:var(--orange)}
+    .nav-links{display:flex;gap:22px;font-size:14px;font-weight:600}
+    .nav-links a{color:var(--txt);text-decoration:none;padding:6px 2px;border-bottom:2px solid transparent}
+    .nav-links a:hover{color:var(--orange);border-bottom-color:var(--orange)}
+    .nav .cta{margin-left:auto;background:var(--orange);color:#fff;text-decoration:none;
+      font-size:13px;font-weight:700;letter-spacing:.4px;padding:9px 18px;border-radius:8px;
+      transition:.15s}
+    .nav .cta:hover{background:var(--orange-dark)}
+    @media(max-width:720px){.nav-links{display:none}}
+
+    /* ── Hero 横幅 ── */
+    .hero{background:linear-gradient(120deg,#fff4ee 0%,#ffe8dc 55%,#ffddc9 100%);
+      border-bottom:1px solid var(--line)}
+    .hero-in{max-width:1200px;margin:0 auto;padding:40px 24px 36px}
+    .hero h1{margin:0 0 8px;font-size:30px;line-height:1.25;letter-spacing:-.3px}
+    .hero h1 em{font-style:normal;color:var(--orange)}
+    .hero p{margin:0;font-size:15px;color:#6b6058;max-width:640px}
+    .hero .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+    .chip{background:#fff;border:1px solid #f0d9cc;color:#a05a35;font-size:12px;
+      font-weight:600;padding:4px 12px;border-radius:999px}
+
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 24px 48px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+    @media(max-width:880px){.cols{grid-template-columns:1fr}}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+      padding:22px;box-shadow:var(--shadow)}
+    h2{margin:0 0 6px;font-size:17px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+    h2 .num{width:22px;height:22px;border-radius:50%;background:var(--orange);color:#fff;
+      font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .sub{font-size:13px;color:var(--muted);margin:0 0 14px}
+
+    /* 上传区 */
+    .drop{display:block;border:2px dashed #d8d8de;border-radius:12px;padding:34px 16px;
+      text-align:center;color:var(--muted);cursor:pointer;transition:.2s;background:#fafafb}
+    .drop:hover{border-color:var(--orange);background:var(--orange-soft);color:var(--txt)}
     .drop b{color:var(--txt)}
     .drop input[type=file]{display:none}
-    .drop img{max-width:100%;max-height:160px;border-radius:8px;margin-top:8px}
+    .drop img{max-width:100%;max-height:160px;border-radius:8px;margin-top:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,.12)}
+
     .field{margin:12px 0}
-    .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
-    .field input[type=range]{width:100%;accent-color:var(--accent)}
-    .row{display:flex;gap:10px}
+    .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600}
+    .field label span{color:var(--txt)}
+    .field input[type=range]{width:100%;accent-color:var(--orange)}
+    .row{display:flex;gap:14px}
     .row .field{flex:1}
     .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:10px 0}
-    .go{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;
-      padding:13px;border-radius:11px;font-size:15px;font-weight:700;cursor:pointer}
-    .go:disabled{opacity:.5;cursor:not-allowed}
-    .preview{height:320px;background:#0b0d11;border-radius:12px;border:1px solid var(--line);
+    .chk input{accent-color:var(--orange)}
+
+    .go{width:100%;margin-top:14px;background:var(--orange);color:#fff;border:0;
+      padding:14px;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:.5px;
+      cursor:pointer;transition:.15s;box-shadow:0 3px 10px rgba(250,104,49,.3)}
+    .go:hover:not(:disabled){background:var(--orange-dark)}
+    .go:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+    /* 预览 */
+    .preview{height:330px;background:#eceef1;border-radius:12px;border:1px solid var(--line);
       display:flex;align-items:center;justify-content:center;color:var(--muted);
       font-size:13px;overflow:hidden;text-align:center;position:relative;touch-action:none}
     .preview canvas{width:100%;height:100%;display:block;cursor:grab}
     .preview canvas:active{cursor:grabbing}
-    .pv-tip{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--muted);
-      background:rgba(11,13,17,.7);padding:2px 8px;border-radius:6px;pointer-events:none}
-    .stats{font-size:13px;margin-top:14px}
-    .stats .grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:6px}
+    .pv-tip{position:absolute;left:10px;bottom:8px;font-size:11px;color:#666;
+      background:rgba(255,255,255,.82);padding:2px 9px;border-radius:6px;pointer-events:none;
+      box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+    .stats{font-size:13px;margin-top:14px;background:#fafafb;border:1px solid var(--line);
+      border-radius:10px;padding:12px 14px}
+    .stats .grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 12px;margin-top:8px}
+    @media(max-width:520px){.stats .grid{grid-template-columns:auto 1fr}}
     .stats .k{color:var(--muted)}
-    .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
-    .ok{background:rgba(61,220,151,.15);color:var(--accent2)}
-    .no{background:rgba(255,90,60,.15);color:var(--accent)}
+    .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
+    .ok{background:rgba(18,168,84,.12);color:var(--green)}
+    .no{background:rgba(250,104,49,.12);color:var(--orange)}
+
     .dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-    .dl button{background:#1b1e26;border:1px solid var(--line);color:var(--blue);
-      padding:8px 13px;border-radius:9px;font-size:13px;cursor:pointer}
+    .dl button{background:#fff;border:1.5px solid var(--line);color:var(--txt);font-weight:600;
+      padding:9px 14px;border-radius:9px;font-size:13px;cursor:pointer;transition:.15s;
+      display:inline-flex;align-items:center;gap:6px}
+    .dl button:hover{border-color:var(--orange);color:var(--orange);background:var(--orange-soft)}
+    .dl button.primary{background:var(--orange);border-color:var(--orange);color:#fff}
+    .dl button.primary:hover{background:var(--orange-dark);color:#fff}
+
     .hint{font-size:12px;color:var(--muted);margin-top:10px}
-    .err{font-size:12px;color:var(--accent);margin-top:10px;white-space:pre-wrap}
+    .hint a{color:var(--blue)}
+    .err{font-size:12px;color:var(--orange-dark);margin-top:10px;white-space:pre-wrap}
     .hidden{display:none}
-    /* —— 模型画廊 —— */
-    .full{grid-column:1 / -1}
-    .g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:4px}
-    .g-card{background:#131720;border:1px solid var(--line);border-radius:12px;padding:10px;
-      cursor:pointer;text-align:center;transition:.15s;position:relative}
-    .g-card:hover{border-color:var(--accent);transform:translateY(-2px)}
-    .g-card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-    .g-card canvas{width:100%;aspect-ratio:1;border-radius:8px;display:block;background:#0b0d11}
-    .g-card .n{font-size:13px;font-weight:700;margin-top:8px}
-    .g-card .d{font-size:11px;color:var(--muted);margin-top:2px}
-    .g-card .t{position:absolute;top:16px;right:16px;font-size:10px;background:rgba(255,90,60,.85);
-      color:#fff;padding:1px 7px;border-radius:999px}
-    .g-card .go2{margin-top:8px;width:100%;background:#1b1e26;border:1px solid var(--line);
-      color:var(--blue);padding:5px 0;border-radius:8px;font-size:12px;cursor:pointer}
-    .g-card:hover .go2{border-color:var(--accent);color:var(--accent)}
-    .comm{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
-    .comm a{flex:1 1 240px;display:block;background:#131720;border:1px solid var(--line);
-      border-radius:10px;padding:10px 14px;text-decoration:none;transition:.15s}
-    .comm a:hover{border-color:var(--blue)}
-    .comm .cn{color:var(--blue);font-size:13px;font-weight:700}
-    .comm .cd{color:var(--muted);font-size:11px;margin-top:2px}
+
+    /* ── 画廊（Printables 模型卡：图在上 + 标题 + 元信息 + 统计行） ── */
+    .section{margin-top:34px}
+    .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+    .sec-head h2{font-size:21px}
+    .sec-head .more{margin-left:auto;font-size:13px;font-weight:600;color:var(--orange);text-decoration:none}
+    .sec-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
+    .g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:16px}
+    .g-card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+      cursor:pointer;transition:.18s;position:relative;box-shadow:var(--shadow);
+      display:flex;flex-direction:column}
+    .g-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+    .g-card.active{outline:2px solid var(--orange);outline-offset:-2px}
+    .g-thumb{position:relative;background:#eceef1}
+    .g-thumb canvas{width:100%;aspect-ratio:4/3;display:block;object-fit:cover}
+    .g-card .t{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;
+      background:var(--orange);color:#fff;padding:2px 8px;border-radius:999px;letter-spacing:.3px}
+    .g-body{padding:11px 13px 12px;display:flex;flex-direction:column;gap:3px;flex:1}
+    .g-body .n{font-size:14px;font-weight:700;letter-spacing:-.1px}
+    .g-body .a{font-size:12px;color:var(--muted)}
+    .g-body .a b{color:var(--blue);font-weight:600}
+    .g-foot{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted);
+      border-top:1px solid #f0f0f3;margin-top:8px;padding-top:8px}
+    .g-foot .st{display:inline-flex;align-items:center;gap:4px}
+    .g-foot .free{margin-left:auto;color:var(--green);font-weight:700}
+    .g-card .go2{margin:0 13px 12px;background:#fff;border:1.5px solid var(--line);
+      color:var(--txt);font-weight:700;padding:7px 0;border-radius:8px;font-size:12.5px;
+      cursor:pointer;transition:.15s;letter-spacing:.3px}
+    .g-card:hover .go2{border-color:var(--orange);color:#fff;background:var(--orange)}
+
+    /* 社区导航卡 */
+    .comm{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+    .comm a{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--line);
+      border-radius:12px;padding:14px 16px;text-decoration:none;transition:.18s;box-shadow:var(--shadow)}
+    .comm a:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:#f0c8b3}
+    .comm .ico{width:40px;height:40px;border-radius:10px;flex:none;display:flex;align-items:center;
+      justify-content:center;font-size:18px;font-weight:800;color:#fff}
+    .comm .cn{color:var(--txt);font-size:14px;font-weight:700}
+    .comm .cd{color:var(--muted);font-size:12px;margin-top:1px}
+
+    /* 页脚 */
+    footer{border-top:1px solid var(--line);background:#fff;margin-top:20px}
+    .foot-in{max-width:1200px;margin:0 auto;padding:26px 24px;display:flex;flex-wrap:wrap;
+      gap:14px;align-items:center;font-size:13px;color:var(--muted)}
+    .foot-in a{color:var(--blue);text-decoration:none}
+    .foot-in .lic{margin-left:auto}
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">Snap<b>Print</b> · 咔印3D</div>
-    <div class="tag">纯浏览器版 · 零安装 · 数据不出本机</div>
-    <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GitHub ↗</a>
-  </header>
+  <!-- 顶部导航 -->
+  <nav class="nav">
+    <div class="nav-in">
+      <a class="logo" href="#"><span class="mark">S</span>Snap<b>Print</b></a>
+      <div class="nav-links">
+        <a href="#make">创作</a>
+        <a href="#gallery-sec">模型画廊</a>
+        <a href="#communities-sec">社区</a>
+      </div>
+      <a class="cta" href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GITHUB ↗</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-in">
+      <h1>一张照片，变成<em>可打印的 3D 模型</em></h1>
+      <p>全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
+      <div class="chips">
+        <span class="chip">✓ 数据不出本机</span>
+        <span class="chip">✓ 水密可切片</span>
+        <span class="chip">✓ 4 种导出格式</span>
+        <span class="chip">✓ 开源 Apache-2.0</span>
+      </div>
+    </div>
+  </div>
 
   <div class="wrap">
-    <div class="card">
-      <h2>① 选择照片</h2>
-      <label class="drop" id="drop">
-        点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b> · 图片只在你的浏览器里处理
-        <input type="file" id="file" accept="image/*" />
-      </label>
+    <div class="cols" id="make">
+      <div class="card">
+        <h2><span class="num">1</span>选择照片</h2>
+        <p class="sub">图片只在你的浏览器里处理，不会上传到任何服务器。</p>
+        <label class="drop" id="drop">
+          点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b>
+          <input type="file" id="file" accept="image/*" />
+        </label>
 
-      <h2 style="margin-top:20px">② 打印参数（毫米）</h2>
-      <div class="row">
-        <div class="field">
-          <label>宽度 <span id="vw">60</span> mm</label>
-          <input type="range" id="tile_w" min="20" max="200" value="60" />
-        </div>
-        <div class="field">
-          <label>底座厚 <span id="vb">2</span> mm</label>
-          <input type="range" id="base" min="0.5" max="10" step="0.5" value="2" />
-        </div>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>浮雕高 <span id="vr">4</span> mm</label>
-          <input type="range" id="relief" min="0.5" max="20" step="0.5" value="4" />
-        </div>
-        <div class="field">
-          <label>精细度 <span id="vq">160</span> 格</label>
-          <input type="range" id="quality" min="64" max="320" step="32" value="160" />
-        </div>
-      </div>
-      <label class="chk"><input type="checkbox" id="invert" /> 反相（亮处凹陷，适合印章/模具）</label>
-
-      <button type="button" class="go" id="go" disabled>在浏览器里生成 3D 模型</button>
-      <div class="hint" id="status">请先选择一张图片。</div>
-      <div class="err hidden" id="err"></div>
-      <div class="hint">AI 模式（Hunyuan3D / TripoSR 整体 3D）需 GPU，请
-        <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener" style="color:var(--blue)">本地部署</a>。</div>
-    </div>
-
-    <div class="card">
-      <h2>预览 & 下载</h2>
-      <div class="preview" id="preview">生成后在此显示可旋转的 3D 模型</div>
-      <div id="result" class="hidden">
-        <div class="stats">
-          <div>水密（可切片）：<span id="wt" class="badge"></span></div>
-          <div class="grid">
-            <div class="k">尺寸(mm)</div><div id="size">—</div>
-            <div class="k">体积(cm³)</div><div id="vol">—</div>
-            <div class="k">面数</div><div id="faces">—</div>
-            <div class="k">顶点</div><div id="verts">—</div>
+        <h2 style="margin-top:22px"><span class="num">2</span>打印参数（毫米）</h2>
+        <div class="row">
+          <div class="field">
+            <label>宽度 <span><span id="vw">60</span> mm</span></label>
+            <input type="range" id="tile_w" min="20" max="200" value="60" />
+          </div>
+          <div class="field">
+            <label>底座厚 <span><span id="vb">2</span> mm</span></label>
+            <input type="range" id="base" min="0.5" max="10" step="0.5" value="2" />
           </div>
         </div>
-        <div class="dl">
-          <button id="dl_stl">STL（推荐打印）</button>
-          <button id="dl_obj">OBJ（几何）</button>
-          <button id="dl_ply">PLY（带颜色）</button>
-          <button id="dl_glb">GLB（AR/网页/带色）</button>
+        <div class="row">
+          <div class="field">
+            <label>浮雕高 <span><span id="vr">4</span> mm</span></label>
+            <input type="range" id="relief" min="0.5" max="20" step="0.5" value="4" />
+          </div>
+          <div class="field">
+            <label>精细度 <span><span id="vq">160</span> 格</span></label>
+            <input type="range" id="quality" min="64" max="320" step="32" value="160" />
+          </div>
         </div>
-        <div class="hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
+        <label class="chk"><input type="checkbox" id="invert" /> 反相（亮处凹陷，适合印章/模具）</label>
+
+        <button type="button" class="go" id="go" disabled>生成 3D 模型</button>
+        <div class="hint" id="status">请先选择一张图片。</div>
+        <div class="err hidden" id="err"></div>
+        <div class="hint">AI 模式（Hunyuan3D / TripoSR 整体 3D）需 GPU，请
+          <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">本地部署</a>。</div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">3</span>预览 &amp; 下载</h2>
+        <p class="sub">拖拽旋转 · 滚轮缩放 · 支持触屏。</p>
+        <div class="preview" id="preview">生成后在此显示可旋转的 3D 模型</div>
+        <div id="result" class="hidden">
+          <div class="stats">
+            <div>水密（可切片）：<span id="wt" class="badge"></span></div>
+            <div class="grid">
+              <div class="k">尺寸(mm)</div><div id="size">—</div>
+              <div class="k">体积(cm³)</div><div id="vol">—</div>
+              <div class="k">面数</div><div id="faces">—</div>
+              <div class="k">顶点</div><div id="verts">—</div>
+            </div>
+          </div>
+          <div class="dl">
+            <button id="dl_stl" class="primary">⬇ STL（推荐打印）</button>
+            <button id="dl_obj">⬇ OBJ</button>
+            <button id="dl_ply">⬇ PLY（带颜色）</button>
+            <button id="dl_glb">⬇ GLB（AR/网页）</button>
+          </div>
+          <div class="hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
+        </div>
       </div>
     </div>
-    <div class="card full">
-      <h2>🎁 模型画廊 —— 点一个直接生成，无需照片</h2>
-      <div class="hint" style="margin:0 0 12px">9 款内置精选模型（原创 · Apache-2.0 · 可自由打印/商用），点击卡片即可 3D 预览并下载 STL/OBJ/PLY/GLB。</div>
+
+    <!-- 模型画廊 -->
+    <div class="section" id="gallery-sec">
+      <div class="sec-head">
+        <h2>精选模型</h2>
+        <a class="more" href="#communities-sec">更多社区模型 →</a>
+      </div>
+      <p class="sec-sub">9 款内置原创模型 · Apache-2.0 · 可自由打印/商用 —— 点击卡片即刻生成、预览与下载，无需照片。</p>
       <div class="g-grid" id="gallery"></div>
     </div>
 
-    <div class="card full">
-      <h2>🌍 更多灵感 —— 各大模型社区</h2>
-      <div class="hint" style="margin:0 0 12px">想要人物手办、机械结构等复杂模型？这些社区有海量作品（下载时请留意各模型的许可协议）。</div>
+    <!-- 社区导航 -->
+    <div class="section" id="communities-sec">
+      <div class="sec-head"><h2>探索更多模型社区</h2></div>
+      <p class="sec-sub">想要人物手办、机械结构等复杂模型？这些社区有海量作品（下载时请留意各模型的许可协议）。</p>
       <div class="comm" id="communities"></div>
     </div>
   </div>
+
+  <footer>
+    <div class="foot-in">
+      <span>SnapPrint · 咔印3D — 照片转可打印 3D 模型</span>
+      <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GitHub 开源仓库 ↗</a>
+      <span class="lic">© 2026 luisdingww-bit · Apache-2.0</span>
+    </div>
+  </footer>
 
 <script src="vendor/three.min.js"></script>
 <script src="gallery.js"></script>
@@ -182,10 +301,10 @@
   var drop = $("drop");
   $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
   ["dragover","dragenter"].forEach(function(ev){
-    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--accent)"; });
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--orange)"; });
   });
   ["dragleave","drop"].forEach(function(ev){
-    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--line)"; });
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = ""; });
   });
   drop.addEventListener("drop", function(e){
     if(e.dataTransfer.files && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
@@ -238,6 +357,7 @@
           reliefMM: parseFloat($("relief").value)
         };
         mesh = S.buildRelief(hts, cols, rows, cls, opt);
+        dlName = "snapprint";
         var st = S.stats(mesh.V, mesh.F);
         renderStats(st);
         render3D(mesh);
@@ -271,7 +391,6 @@
     // 组装 BufferGeometry（Z-up mm → three 的 Y-up，居中）
     var n = m.V.length, nf = m.F.length;
     var pos = new Float32Array(n * 3);
-    var cx = 0, cy = 0, cz = 0;
     for(var i = 0; i < n; i++){
       pos[i*3] = m.V[i][0]; pos[i*3+1] = m.V[i][2]; pos[i*3+2] = -m.V[i][1];
     }
@@ -304,11 +423,11 @@
       pv.appendChild(tip);
 
       var scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0b0d11);
+      scene.background = new THREE.Color(0xeceef1);
       var camera = new THREE.PerspectiveCamera(45, pv.clientWidth / pv.clientHeight, 0.1, 5000);
-      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-      var d1 = new THREE.DirectionalLight(0xffffff, 0.8); d1.position.set(1, 2, 1.5); scene.add(d1);
-      var d2 = new THREE.DirectionalLight(0x88aaff, 0.3); d2.position.set(-1.5, -1, -1); scene.add(d2);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+      var d1 = new THREE.DirectionalLight(0xffffff, 0.75); d1.position.set(1, 2, 1.5); scene.add(d1);
+      var d2 = new THREE.DirectionalLight(0xcfe0ff, 0.3); d2.position.set(-1.5, -1, -1); scene.add(d2);
       var pivot = new THREE.Group(); scene.add(pivot);
 
       viewer = { renderer: renderer, scene: scene, camera: camera, pivot: pivot, tip: tip,
@@ -359,7 +478,7 @@
       viewer.obj.geometry.dispose(); viewer.obj.material.dispose();
     }
     var mat = new THREE.MeshStandardMaterial({
-      vertexColors: !!m.C, color: m.C ? 0xffffff : 0xff7a55,
+      vertexColors: !!m.C, color: m.C ? 0xffffff : 0xfa6831,
       metalness: 0.05, roughness: 0.75, flatShading: false
     });
     viewer.obj = new THREE.Mesh(geo, mat);
@@ -383,7 +502,7 @@
   $("dl_ply").addEventListener("click", function(){ if(mesh) save(dlName + ".ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
   $("dl_glb").addEventListener("click", function(){ if(mesh) save(dlName + ".glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
 
-  /* —— 模型画廊 —— */
+  /* —— 模型画廊（Printables 风格卡片） —— */
   (function initGallery(){
     var G = window.SnapPrintGallery;
     if(!G) return;
@@ -391,11 +510,18 @@
     G.items.forEach(function(item){
       var card = document.createElement("div");
       card.className = "g-card";
-      card.innerHTML = '<span class="t">' + item.tag + '</span>' +
-        '<canvas></canvas>' +
-        '<div class="n">' + item.name + '</div>' +
-        '<div class="d">' + item.desc + ' · ' + item.opt.widthMM + 'mm</div>' +
-        '<button type="button" class="go2">生成此模型</button>';
+      card.innerHTML =
+        '<div class="g-thumb"><span class="t">' + item.tag + '</span><canvas></canvas></div>' +
+        '<div class="g-body">' +
+          '<div class="n">' + item.name + '</div>' +
+          '<div class="a">by <b>SnapPrint</b> · ' + item.desc + '</div>' +
+          '<div class="g-foot">' +
+            '<span class="st">📐 ' + item.opt.widthMM + 'mm</span>' +
+            '<span class="st">🧊 水密</span>' +
+            '<span class="free">免费</span>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="go2">立即生成</button>';
       G.drawThumb(item, card.querySelector("canvas"), 128);
       card.addEventListener("click", function(){
         var all = grid.querySelectorAll(".g-card");
@@ -411,7 +537,7 @@
             renderStats(st);
             render3D(mesh);
             $("status").textContent = "「" + item.name + "」完成 ✅（" +
-              Math.round(performance.now() - t0) + " ms）右侧预览可旋转，下方按钮下载。";
+              Math.round(performance.now() - t0) + " ms）预览可旋转，下方按钮下载。";
             $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
           }catch(e){
             $("status").textContent = "错误：" + e.message;
@@ -422,10 +548,14 @@
     });
 
     var comm = $("communities");
-    G.communities.forEach(function(c){
+    var palette = ["#fa6831","#2e6fd8","#12a854","#8a5cf6","#e8447a","#f5a623"];
+    G.communities.forEach(function(c, i){
       var a = document.createElement("a");
       a.href = c.url; a.target = "_blank"; a.rel = "noopener";
-      a.innerHTML = '<div class="cn">' + c.name + ' ↗</div><div class="cd">' + c.desc + '</div>';
+      a.innerHTML =
+        '<span class="ico" style="background:' + palette[i % palette.length] + '">' +
+          c.name.charAt(0) + '</span>' +
+        '<span><div class="cn">' + c.name + ' ↗</div><div class="cd">' + c.desc + '</div></span>';
       comm.appendChild(a);
     });
   })();

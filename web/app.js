@@ -53,6 +53,90 @@
     return { V: V, F: F, C: C };
   }
 
+  /** 2D 转 3D：轮廓拉伸（Extrusion）
+   *  输入：布尔掩码 mask(rows*cols, true=实体) + 可选颜色
+   *  输出：把 2D 剪影垂直拉伸成 heightMM 厚的水密实体（Logo/剪影/线稿 → 立体挂件）
+   *  说明：先做"棋盘角"修复（对角接触会产生非流形顶点），再按格点生成
+   *        顶面/底面/边界侧壁，每条边恰好被 2 个三角形共享 → 水密。
+   */
+  function buildExtrude(mask, cols, rows, colors, opt) {
+    var W = opt.widthMM, D = opt.depthMM, H = opt.heightMM;
+    var dx = W / cols, dy = D / rows;
+    var r, c, i;
+
+    // 复制掩码并修复棋盘角（对角相接、边不相接 → 补一格，保证边流形）
+    var m = new Uint8Array(rows * cols);
+    for (i = 0; i < rows * cols; i++) m[i] = mask[i] ? 1 : 0;
+    var changed = true, guard = 0;
+    while (changed && guard++ < 20) {
+      changed = false;
+      for (r = 0; r < rows - 1; r++) {
+        for (c = 0; c < cols - 1; c++) {
+          var a = m[r * cols + c],     b = m[r * cols + c + 1];
+          var d2 = m[(r + 1) * cols + c], e = m[(r + 1) * cols + c + 1];
+          if (a && e && !b && !d2) { m[r * cols + c + 1] = 1; changed = true; }
+          else if (b && d2 && !a && !e) { m[r * cols + c] = 1; changed = true; }
+        }
+      }
+    }
+    function solid(rr, cc) {
+      if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) return 0;
+      return m[rr * cols + cc];
+    }
+
+    // 角点复用：网格角点 (rows+1)x(cols+1)，每个被用到的角点建 顶/底 两个顶点
+    var cornerTop = new Int32Array((rows + 1) * (cols + 1)); cornerTop.fill(-1);
+    var cornerBot = new Int32Array((rows + 1) * (cols + 1)); cornerBot.fill(-1);
+    var V = [], C = colors ? [] : null;
+    function cornerColor(rr, cc) {
+      // 取角点周围任一实体格的颜色
+      var cand = [[rr - 1, cc - 1], [rr - 1, cc], [rr, cc - 1], [rr, cc]];
+      for (var k = 0; k < 4; k++) {
+        var p = cand[k];
+        if (solid(p[0], p[1])) return colors[p[0] * cols + p[1]];
+      }
+      return [200, 200, 200];
+    }
+    function getV(rr, cc, top) {
+      var key = rr * (cols + 1) + cc;
+      var arr = top ? cornerTop : cornerBot;
+      if (arr[key] === -1) {
+        arr[key] = V.length;
+        // y 翻转：图像第 0 行在最上 → 3D 里 y=D
+        V.push([cc * dx, (rows - rr) * dy, top ? H : 0]);
+        if (C) C.push(cornerColor(rr, cc));
+      }
+      return arr[key];
+    }
+
+    var F = [];
+    function quad(a2, b2, c2, d3) { F.push([a2, b2, c2]); F.push([a2, c2, d3]); }
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++) {
+        if (!m[r * cols + c]) continue;
+        // 格子的 4 个角点：tl(r,c) tr(r,c+1) bl(r+1,c) br(r+1,c+1)
+        var tlT = getV(r, c, 1), trT = getV(r, c + 1, 1),
+            blT = getV(r + 1, c, 1), brT = getV(r + 1, c + 1, 1);
+        var tlB = getV(r, c, 0), trB = getV(r, c + 1, 0),
+            blB = getV(r + 1, c, 0), brB = getV(r + 1, c + 1, 0);
+        // 顶面(+z)：注意 y 已翻转，tl 的 y 大于 bl
+        quad(tlT, blT, brT, trT);
+        // 底面(-z)
+        quad(tlB, trB, brB, blB);
+        // 侧壁：仅在与空格/边界相邻处生成（外法线朝外）
+        if (!solid(r - 1, c)) quad(tlT, trT, trB, tlB);        // 上邻空 → +y 壁
+        if (!solid(r + 1, c)) quad(brT, blT, blB, brB);        // 下邻空 → -y 壁
+        if (!solid(r, c - 1)) quad(blT, tlT, tlB, blB);        // 左邻空 → -x 壁
+        if (!solid(r, c + 1)) quad(trT, brT, brB, trB);        // 右邻空 → +x 壁
+      }
+    }
+    if (F.length === 0) throw new Error("未检测到轮廓：请调整阈值或勾选反相");
+    if (signedVolume(V, F) < 0) {
+      for (i = 0; i < F.length; i++) { var t = F[i][1]; F[i][1] = F[i][2]; F[i][2] = t; }
+    }
+    return { V: V, F: F, C: C };
+  }
+
   /** 有向体积（mm³），封闭网格应为正 */
   function signedVolume(V, F) {
     var vol = 0;
@@ -233,6 +317,7 @@
 
   global.SnapPrintCore = {
     buildRelief: buildRelief,
+    buildExtrude: buildExtrude,
     signedVolume: signedVolume,
     isWatertight: isWatertight,
     exportOBJ: exportOBJ,

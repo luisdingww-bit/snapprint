@@ -68,6 +68,13 @@
     .drop img{max-width:100%;max-height:160px;border-radius:8px;margin-top:8px;
       box-shadow:0 2px 8px rgba(0,0,0,.12)}
 
+    /* 模式切换（分段控件） */
+    .seg{display:flex;background:#f0f0f3;border-radius:10px;padding:4px;gap:4px;margin:4px 0 14px}
+    .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:8px;
+      font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:.15s}
+    .seg button.on{background:#fff;color:var(--orange);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+    .mode-tip{font-size:12px;color:var(--muted);margin:-6px 0 10px}
+
     .field{margin:12px 0}
     .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600}
     .field label span{color:var(--txt)}
@@ -179,10 +186,12 @@
   <!-- Hero -->
   <div class="hero">
     <div class="hero-in">
-      <h1>一张照片，变成<em>可打印的 3D 模型</em></h1>
-      <p>全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
+      <h1>一张照片 / 一个 Logo，变成<em>可打印的 3D 模型</em></h1>
+      <p>照片浮雕 + 2D 轮廓拉伸双模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
       <div class="chips">
         <span class="chip">✓ 数据不出本机</span>
+        <span class="chip">✓ 照片浮雕</span>
+        <span class="chip">✓ 2D 轮廓拉伸</span>
         <span class="chip">✓ 水密可切片</span>
         <span class="chip">✓ 4 种导出格式</span>
         <span class="chip">✓ 开源 Apache-2.0</span>
@@ -193,26 +202,31 @@
   <div class="wrap">
     <div class="cols" id="make">
       <div class="card">
-        <h2><span class="num">1</span>选择照片</h2>
-        <p class="sub">图片只在你的浏览器里处理，不会上传到任何服务器。</p>
+        <h2><span class="num">1</span>选择图片</h2>
+        <p class="sub">照片、Logo、剪影、手绘线稿都可以 —— 图片只在你的浏览器里处理，不会上传到任何服务器。</p>
         <label class="drop" id="drop">
           点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b>
           <input type="file" id="file" accept="image/*" />
         </label>
 
-        <h2 style="margin-top:22px"><span class="num">2</span>打印参数（毫米）</h2>
+        <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
+        <div class="seg" id="modeseg">
+          <button type="button" class="on" data-mode="relief">🖼 照片浮雕</button>
+          <button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>
+        </div>
+        <div class="mode-tip" id="modetip">按明暗生成起伏浮雕 —— 适合照片、风景、人像。</div>
         <div class="row">
           <div class="field">
             <label>宽度 <span><span id="vw">60</span> mm</span></label>
             <input type="range" id="tile_w" min="20" max="200" value="60" />
           </div>
-          <div class="field">
+          <div class="field" id="f_base">
             <label>底座厚 <span><span id="vb">2</span> mm</span></label>
             <input type="range" id="base" min="0.5" max="10" step="0.5" value="2" />
           </div>
         </div>
         <div class="row">
-          <div class="field">
+          <div class="field" id="f_relief">
             <label>浮雕高 <span><span id="vr">4</span> mm</span></label>
             <input type="range" id="relief" min="0.5" max="20" step="0.5" value="4" />
           </div>
@@ -221,7 +235,17 @@
             <input type="range" id="quality" min="64" max="320" step="32" value="160" />
           </div>
         </div>
-        <label class="chk"><input type="checkbox" id="invert" /> 反相（亮处凹陷，适合印章/模具）</label>
+        <div class="row hidden" id="f_extrude">
+          <div class="field">
+            <label>拉伸厚度 <span><span id="vh">5</span> mm</span></label>
+            <input type="range" id="ex_h" min="1" max="30" step="0.5" value="5" />
+          </div>
+          <div class="field">
+            <label>轮廓阈值 <span><span id="vt">50</span> %</span></label>
+            <input type="range" id="ex_t" min="5" max="95" step="5" value="50" />
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="invert" /> <span id="invlbl">反相（亮处凹陷，适合印章/模具）</span></label>
 
         <button type="button" class="go" id="go" disabled>生成 3D 模型</button>
         <div class="hint" id="status">请先选择一张图片。</div>
@@ -294,8 +318,32 @@
   function $(id){ return document.getElementById(id); }
   var img = null, mesh = null;
 
-  [["tile_w","vw"],["base","vb"],["relief","vr"],["quality","vq"]].forEach(function(p){
+  [["tile_w","vw"],["base","vb"],["relief","vr"],["quality","vq"],["ex_h","vh"],["ex_t","vt"]].forEach(function(p){
     var el = $(p[0]); el.addEventListener("input", function(){ $(p[1]).textContent = el.value; });
+  });
+
+  /* —— 生成模式切换：照片浮雕 / 2D 轮廓拉伸 —— */
+  var genMode = "relief";
+  var modeTips = {
+    relief:  "按明暗生成起伏浮雕 —— 适合照片、风景、人像。",
+    extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。"
+  };
+  var invTips = {
+    relief:  "反相（亮处凹陷，适合印章/模具）",
+    extrude: "反相（改为提取亮色部分作为实体）"
+  };
+  $("modeseg").addEventListener("click", function(e){
+    var btn = e.target.closest("button");
+    if(!btn) return;
+    genMode = btn.getAttribute("data-mode");
+    var bs = $("modeseg").querySelectorAll("button");
+    for(var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i] === btn);
+    $("modetip").textContent = modeTips[genMode];
+    $("invlbl").textContent = invTips[genMode];
+    var isEx = genMode === "extrude";
+    $("f_extrude").classList.toggle("hidden", !isEx);
+    $("f_base").classList.toggle("hidden", isEx);
+    $("f_relief").classList.toggle("hidden", isEx);
   });
 
   var drop = $("drop");
@@ -350,14 +398,31 @@
           cls[i] = [R, G, B];
         }
         var W = parseFloat($("tile_w").value);
-        var opt = {
-          widthMM: W,
-          depthMM: Math.round(W * aspect * 10) / 10,
-          baseMM: parseFloat($("base").value),
-          reliefMM: parseFloat($("relief").value)
-        };
-        mesh = S.buildRelief(hts, cols, rows, cls, opt);
-        dlName = "snapprint";
+        if(genMode === "extrude"){
+          // 2D 转 3D：按阈值二值化 → 轮廓拉伸成实体
+          // 语义：默认取"比阈值更暗"的像素为实体（Logo/线稿通常深色）；反相则取更亮的
+          var thr = parseInt($("ex_t").value, 10) / 100;
+          var msk = new Array(n);
+          for(i = 0; i < n; i++){
+            var gray = invert ? 1 - hts[i] : hts[i];     // hts 已含反相，这里还原原始灰度
+            msk[i] = invert ? (gray > thr) : (gray < thr);
+          }
+          mesh = S.buildExtrude(msk, cols, rows, cls, {
+            widthMM: W,
+            depthMM: Math.round(W * aspect * 10) / 10,
+            heightMM: parseFloat($("ex_h").value)
+          });
+          dlName = "snapprint-extrude";
+        }else{
+          var opt = {
+            widthMM: W,
+            depthMM: Math.round(W * aspect * 10) / 10,
+            baseMM: parseFloat($("base").value),
+            reliefMM: parseFloat($("relief").value)
+          };
+          mesh = S.buildRelief(hts, cols, rows, cls, opt);
+          dlName = "snapprint";
+        }
         var st = S.stats(mesh.V, mesh.F);
         renderStats(st);
         render3D(mesh);

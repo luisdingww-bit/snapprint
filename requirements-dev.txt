@@ -1,0 +1,3 @@
+# 开发 / CI 测试依赖（不参与线上运行）
+pytest>=7.0
+httpx>=0.27   # FastAPI TestClient 依赖

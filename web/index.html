@@ -74,6 +74,9 @@
       font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:.15s}
     .seg button.on{background:#fff;color:var(--orange);box-shadow:0 1px 4px rgba(0,0,0,.1)}
     .mode-tip{font-size:12px;color:var(--muted);margin:-6px 0 10px}
+    .field select{width:100%;padding:9px 10px;border:1.5px solid var(--line);border-radius:9px;
+      font-size:14px;font-weight:600;color:var(--txt);background:#fff;cursor:pointer;margin-top:4px}
+    .field select:focus{outline:none;border-color:var(--orange)}
 
     .field{margin:12px 0}
     .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600}
@@ -188,12 +191,13 @@
   <!-- Hero -->
   <div class="hero">
     <div class="hero-in">
-      <h1>一张照片 / 一个 Logo，变成<em>可打印的 3D 模型</em></h1>
-      <p>照片浮雕 + 2D 轮廓拉伸双模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
+      <h1>一张照片 / 一个 Logo / 一句参数，变成<em>可打印的 3D 模型</em></h1>
+      <p>照片浮雕 + 2D 轮廓拉伸 + 真实3D几何三模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格，直接下载 STL / OBJ / PLY / GLB。</p>
       <div class="chips">
         <span class="chip">✓ 数据不出本机</span>
         <span class="chip">✓ 照片浮雕</span>
         <span class="chip">✓ 2D 轮廓拉伸</span>
+        <span class="chip">✓ 真实3D几何</span>
         <span class="chip">✓ 水密可切片</span>
         <span class="chip">✓ 4 种导出格式</span>
         <span class="chip">✓ 开源 Apache-2.0</span>
@@ -204,8 +208,8 @@
   <div class="wrap">
     <div class="cols" id="make">
       <div class="card">
-        <h2><span class="num">1</span>选择图片</h2>
-        <p class="sub">照片、Logo、剪影、手绘线稿都可以 —— 图片只在你的浏览器里处理，不会上传到任何服务器。</p>
+        <h2><span class="num">1</span>选择图片<span style="font-size:12px;font-weight:600;color:var(--muted)">（真实3D模型模式无需图片）</span></h2>
+        <p class="sub">照片、Logo、剪影、手绘线稿都可以 —— 图片只在你的浏览器里处理，不会上传到任何服务器。想直接生成花瓶、宝石、球、圆环等立体几何？在下方切到「🧊 真实3D模型」。</p>
         <label class="drop" id="drop">
           点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b>
           <input type="file" id="file" accept="image/*" />
@@ -275,6 +279,7 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="gallery.js"></script>
+<script src="shapes3d.js"></script>
 <script src="app.js"></script>
 <script>
   window.addEventListener("error", function(e){
@@ -287,20 +292,30 @@
   var img = null, mesh = null, galleryItem = null, dlName = "snapprint";
 
   /* ── 共享参数状态：顶部面板 与 预览区面板 双向同步 ── */
-  var P = { mode:"relief", w:60, base:2, relief:4, q:160, exH:5, exT:50, invert:false, lockMode:false };
+  var P = { mode:"relief", w:60, base:2, relief:4, q:160, exH:5, exT:50, invert:false, lockMode:false,
+            shape:"vase", s3H:120, s3D:80, s3Seg:120, s3Tw:0, s3Lobe:0 };
   var FIELDS = [
-    { key:"w",      label:"宽度",     unit:"mm", min:20,  max:200, step:1,  grp:"all" },
+    { key:"w",      label:"宽度",     unit:"mm", min:20,  max:200, step:1,  grp:"img" },
     { key:"base",   label:"底座厚",   unit:"mm", min:0.5, max:10,  step:0.5,grp:"relief" },
     { key:"relief", label:"浮雕高",   unit:"mm", min:0.5, max:20,  step:0.5,grp:"relief" },
-    { key:"q",      label:"精细度",   unit:"格", min:64,  max:320, step:32, grp:"all" },
+    { key:"q",      label:"精细度",   unit:"格", min:64,  max:320, step:32, grp:"img" },
     { key:"exH",    label:"拉伸厚度", unit:"mm", min:1,   max:30,  step:0.5,grp:"extrude" },
-    { key:"exT",    label:"轮廓阈值", unit:"%",  min:5,   max:95,  step:5,  grp:"extrude" }
+    { key:"exT",    label:"轮廓阈值", unit:"%",  min:5,   max:95,  step:5,  grp:"extrude" },
+    { key:"s3H",    label:"高度",     unit:"mm", min:20,  max:200, step:1,  grp:"solid3d" },
+    { key:"s3D",    label:"直径",     unit:"mm", min:10,  max:200, step:1,  grp:"solid3d" },
+    { key:"s3Seg",  label:"圆周分段", unit:"段", min:8,   max:160, step:4,  grp:"solid3d" },
+    { key:"s3Tw",   label:"扭转",     unit:"°",  min:0,   max:720, step:10, grp:"solid3d" },
+    { key:"s3Lobe", label:"棱数",     unit:"棱", min:0,   max:12,  step:1,  grp:"solid3d" }
   ];
   function fieldByKey(k){ for(var i=0;i<FIELDS.length;i++) if(FIELDS[i].key===k) return FIELDS[i]; }
-  function fieldVisible(f){ return f.grp==="all" || f.grp===P.mode; }
+  function fieldVisible(f){
+    if(f.grp==="img") return P.mode==="relief" || P.mode==="extrude";
+    return f.grp===P.mode;
+  }
   var MODE_TIPS = {
     relief:  "按明暗生成起伏浮雕 —— 适合照片、风景、人像。",
-    extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。"
+    extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。",
+    solid3d: "无需照片，直接参数化生成真实立体几何（旋转体 / 圆环）—— 花瓶、宝石、球、圆环、棋子…"
   };
   var INV_TIPS = {
     relief:  "反相（亮处凹陷，适合印章/模具）",
@@ -321,7 +336,10 @@
     var seg = document.createElement("div");
     seg.className = "seg";
     var segHtml = '<button type="button" data-mode="relief">🖼 照片浮雕</button>';
-    if(!P.lockMode) segHtml += '<button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>';
+    if(!P.lockMode){
+      segHtml += '<button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>';
+      segHtml += '<button type="button" data-mode="solid3d">🧊 真实3D模型</button>';
+    }
     seg.innerHTML = segHtml;
     seg.querySelectorAll("button").forEach(function(b){
       if(b.getAttribute("data-mode")===P.mode) b.classList.add("on");
@@ -331,6 +349,18 @@
     var tip = document.createElement("div");
     tip.className = "mode-tip"; tip.textContent = MODE_TIPS[P.mode];
     cont.appendChild(tip);
+
+    // 真实3D：形状选择下拉
+    if(P.mode==="solid3d" && window.SnapPrint3D){
+      var sf = document.createElement("div");
+      sf.className = "field";
+      var opts = window.SnapPrint3D.shapes.map(function(s){
+        return '<option value="'+s.id+'"'+(s.id===P.shape?" selected":"")+'>'+s.emoji+' '+s.name+'</option>';
+      }).join("");
+      sf.innerHTML = '<label>模型类型 <span></span></label><select>'+opts+'</select>';
+      sf.querySelector("select").addEventListener("change", function(e){ setShape(e.target.value); });
+      cont.appendChild(sf);
+    }
 
     // 滑块行
     function rowHTML(keys){
@@ -342,14 +372,17 @@
       }).join("")+'</div>';
     }
     cont.insertAdjacentHTML("beforeend",
-      rowHTML(["w","q"]) + rowHTML(["base","relief"]) + rowHTML(["exH","exT"]));
+      rowHTML(["w","q"]) + rowHTML(["base","relief"]) + rowHTML(["exH","exT"]) +
+      rowHTML(["s3H","s3D"]) + rowHTML(["s3Seg","s3Tw"]) + rowHTML(["s3Lobe"]));
 
-    // 反相
-    var chk = document.createElement("label");
-    chk.className = "chk";
-    chk.innerHTML = '<input type="checkbox"'+(P.invert?" checked":"")+' /> <span>'+INV_TIPS[P.mode]+'</span>';
-    chk.querySelector("input").addEventListener("change", function(e){ P.invert = e.target.checked; regen(); });
-    cont.appendChild(chk);
+    // 反相（真实3D 模式不需要）
+    if(P.mode!=="solid3d"){
+      var chk = document.createElement("label");
+      chk.className = "chk";
+      chk.innerHTML = '<input type="checkbox"'+(P.invert?" checked":"")+' /> <span>'+INV_TIPS[P.mode]+'</span>';
+      chk.querySelector("input").addEventListener("change", function(e){ P.invert = e.target.checked; regen(); });
+      cont.appendChild(chk);
+    }
 
     // 滑块事件：更新状态 + 双向同步数值显示 + 防抖重新生成
     cont.querySelectorAll('input[type=range]').forEach(function(el){
@@ -373,6 +406,24 @@
   function setMode(m){
     if(P.lockMode && m!=="relief") return;
     P.mode = m;
+    if(m==="solid3d"){
+      galleryItem = null;                 // 真实3D 不依赖图片/画廊条目
+      $("go").disabled = false;
+      if(!P.shape) P.shape = "vase";
+    }else{
+      $("go").disabled = !img;
+    }
+    buildPanel("top"); buildPanel("bottom");
+    regen();
+  }
+
+  /** 切换真实3D 形状：载入该形状默认参数并重新生成 */
+  function setShape(id){
+    var sh = window.SnapPrint3D && window.SnapPrint3D.byId(id);
+    if(!sh) return;
+    P.shape = id;
+    var d = sh.defaults;
+    P.s3H = d.H; P.s3D = d.D; P.s3Seg = d.seg; P.s3Tw = d.twist; P.s3Lobe = d.lobes;
     buildPanel("top"); buildPanel("bottom");
     regen();
   }
@@ -396,6 +447,7 @@
     im.onload = function(){
       img = im;
       galleryItem = null; P.lockMode = false;
+      if(P.mode==="solid3d") P.mode = "relief";   // 选图后切回浮雕模式
       buildPanel("top"); buildPanel("bottom");
       drop.innerHTML = "已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />" +
         "<input type=\"file\" id=\"file\" accept=\"image/*\" />";
@@ -410,12 +462,18 @@
   /* ── 生成（统一读取共享状态 P；图片 或 画廊模型 皆可） ── */
   function generate(){
     if(!S) return;
-    if(!img && !galleryItem) return;
+    if(P.mode!=="solid3d" && !img && !galleryItem) return;
     $("status").textContent = "生成中…";
     setTimeout(function(){                      // 让 UI 先刷新
       try{
         var t0 = performance.now();
-        if(galleryItem){
+        if(P.mode==="solid3d"){
+          if(!window.SnapPrint3D) throw new Error("真实3D 模块未加载");
+          mesh = window.SnapPrint3D.build(P.shape, {
+            H: P.s3H, D: P.s3D, seg: P.s3Seg, twist: P.s3Tw, lobes: P.s3Lobe
+          });
+          dlName = "snapprint-" + P.shape;
+        }else if(galleryItem){
           mesh = window.SnapPrintGallery.buildItem(galleryItem, {
             quality: P.q, widthMM: P.w, depthMM: P.w, baseMM: P.base, reliefMM: P.relief
           });

@@ -137,6 +137,96 @@
     return { V: V, F: F, C: C };
   }
 
+  /** 旋转体（Solid of Revolution）：把 2D 轮廓绕 Z 轴旋转成"真实立体"水密实体。
+   *  这不是浮雕/拉伸，而是有完整体量的三维几何（花瓶、球、宝石、棋子…）。
+   *  profile: [[r,z], …] 由底到顶，r>=0（端点 r≈0 视为极点/尖端，自动收成一个点）。
+   *  opt: { seg: 圆周分段, twist: 总扭转弧度, lobes: 棱数(0=圆), lobeAmt: 棱深(0..1),
+   *         colorFn(r,z,ang,t): 顶点色, t=归一高度 }
+   */
+  function buildRevolution(profile, opt) {
+    opt = opt || {};
+    var seg = Math.max(3, opt.seg || 64);
+    var twist = opt.twist || 0, lobes = opt.lobes || 0, lobeAmt = opt.lobeAmt || 0;
+    var colorFn = opt.colorFn, EPS = 1e-6;
+    var np = profile.length;
+    var zmin = profile[0][1], zmax = profile[np - 1][1], zr = (zmax - zmin) || 1;
+    var V = [], C = colorFn ? [] : null, F = [];
+    var ringStart = new Array(np), isPole = new Array(np);
+    var p, s, n, i;
+    for (p = 0; p < np; p++) {
+      var r0 = profile[p][0], z = profile[p][1], t = (z - zmin) / zr;
+      if (r0 < EPS) {
+        isPole[p] = true; ringStart[p] = V.length;
+        V.push([0, 0, z]); if (C) C.push(colorFn(0, z, 0, t));
+      } else {
+        isPole[p] = false; ringStart[p] = V.length;
+        var off = twist * t;
+        for (s = 0; s < seg; s++) {
+          var a = s / seg * 2 * Math.PI + off;
+          var rr = r0 * (lobes ? (1 + lobeAmt * Math.cos(lobes * a)) : 1);
+          V.push([rr * Math.cos(a), rr * Math.sin(a), z]);
+          if (C) C.push(colorFn(rr, z, a, t));
+        }
+      }
+    }
+    function tri(x, y, w) { F.push([x, y, w]); }
+    for (p = 0; p < np - 1; p++) {
+      var a0 = ringStart[p], a1 = ringStart[p + 1], pa = isPole[p], pb = isPole[p + 1];
+      if (pa && pb) continue;
+      if (pa) {                                   // 下极点 → 上环：扇形
+        for (s = 0; s < seg; s++) { n = (s + 1) % seg; tri(a0, a1 + n, a1 + s); }
+      } else if (pb) {                            // 下环 → 上极点：扇形
+        for (s = 0; s < seg; s++) { n = (s + 1) % seg; tri(a0 + s, a0 + n, a1); }
+      } else {                                    // 环 → 环：四边形带
+        for (s = 0; s < seg; s++) {
+          n = (s + 1) % seg;
+          tri(a0 + s, a0 + n, a1 + n); tri(a0 + s, a1 + n, a1 + s);
+        }
+      }
+    }
+    if (!isPole[0]) {                             // 底盖圆盘
+      var cB = V.length; V.push([0, 0, profile[0][1]]);
+      if (C) C.push(colorFn(0, profile[0][1], 0, 0));
+      var b0 = ringStart[0];
+      for (s = 0; s < seg; s++) { n = (s + 1) % seg; tri(cB, b0 + n, b0 + s); }
+    }
+    if (!isPole[np - 1]) {                        // 顶盖圆盘
+      var cT = V.length; V.push([0, 0, profile[np - 1][1]]);
+      if (C) C.push(colorFn(0, profile[np - 1][1], 0, 1));
+      var tp = ringStart[np - 1];
+      for (s = 0; s < seg; s++) { n = (s + 1) % seg; tri(cT, tp + s, tp + n); }
+    }
+    if (signedVolume(V, F) < 0) {
+      for (i = 0; i < F.length; i++) { var tt = F[i][1]; F[i][1] = F[i][2]; F[i][2] = tt; }
+    }
+    return { V: V, F: F, C: C };
+  }
+
+  /** 圆环（甜甜圈/戒指）：管半径 rt 的圆截面绕主半径 R 旋转，双向封闭 → 水密。 */
+  function buildTorus(R, rt, segU, segV, colorFn) {
+    segU = Math.max(3, segU || 64); segV = Math.max(3, segV || 24);
+    var V = [], C = colorFn ? [] : null, F = [], u, v;
+    for (u = 0; u < segU; u++) {
+      var au = u / segU * 2 * Math.PI;
+      for (v = 0; v < segV; v++) {
+        var av = v / segV * 2 * Math.PI, rr = R + rt * Math.cos(av);
+        var x = rr * Math.cos(au), y = rr * Math.sin(au), z = rt * Math.sin(av);
+        V.push([x, y, z]); if (C) C.push(colorFn(au, av, x, y, z));
+      }
+    }
+    function idx(uu, vv) { return (uu % segU) * segV + (vv % segV); }
+    for (u = 0; u < segU; u++) {
+      for (v = 0; v < segV; v++) {
+        var a = idx(u, v), b = idx(u + 1, v), c = idx(u + 1, v + 1), d = idx(u, v + 1);
+        F.push([a, b, c]); F.push([a, c, d]);
+      }
+    }
+    if (signedVolume(V, F) < 0) {
+      for (var i = 0; i < F.length; i++) { var t = F[i][1]; F[i][1] = F[i][2]; F[i][2] = t; }
+    }
+    return { V: V, F: F, C: C };
+  }
+
   /** 有向体积（mm³），封闭网格应为正 */
   function signedVolume(V, F) {
     var vol = 0;
@@ -318,6 +408,8 @@
   global.SnapPrintCore = {
     buildRelief: buildRelief,
     buildExtrude: buildExtrude,
+    buildRevolution: buildRevolution,
+    buildTorus: buildTorus,
     signedVolume: signedVolume,
     isWatertight: isWatertight,
     exportOBJ: exportOBJ,

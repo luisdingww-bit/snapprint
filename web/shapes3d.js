@@ -165,6 +165,124 @@
           colorFn: function (r, z, a, t) { return col([150, 90, 190], [226, 200, 246], t); }
         });
       }
+    },
+    {
+      id: "bowl", name: "碗（带内腔）", emoji: "🥣", tag: "餐具",
+      defaults: { H: 50, D: 110, seg: 120, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        // 外壁上行 → 翻过杯口 → 内壁下行 → 内底收成极点（真实空腔，可装东西）
+        var pr = profilePts(p.H, Rmax, [
+          [0.52, 0.00], [0.80, 0.10], [0.96, 0.42], [1.00, 0.82], [1.00, 1.00],
+          [0.90, 1.00], [0.88, 0.90], [0.72, 0.42], [0.40, 0.22], [0.00, 0.18]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg,
+          colorFn: function (r, z, a, t) { return col([70, 130, 180], [214, 236, 250], t); }
+        });
+      }
+    },
+    {
+      id: "pot", name: "花盆（带内腔）", emoji: "🪴", tag: "园艺",
+      defaults: { H: 90, D: 100, seg: 110, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        var pr = profilePts(p.H, Rmax, [
+          [0.58, 0.00], [0.62, 0.03], [0.92, 0.84], [1.00, 0.86], [1.00, 1.00],
+          [0.88, 1.00], [0.86, 0.92], [0.56, 0.14], [0.00, 0.11]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg, lobes: p.lobes || 0, lobeAmt: p.lobes ? 0.06 : 0,
+          colorFn: function (r, z, a, t) { return col([176, 96, 58], [236, 178, 132], t); }
+        });
+      }
+    },
+    {
+      id: "mushroom", name: "蘑菇", emoji: "🍄", tag: "摆件",
+      defaults: { H: 85, D: 80, seg: 100, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        var pr = profilePts(p.H, Rmax, [
+          [0.30, 0.00], [0.26, 0.10], [0.22, 0.35], [0.24, 0.48], [0.55, 0.52],
+          [0.95, 0.55], [1.00, 0.62], [0.92, 0.75], [0.62, 0.90], [0.30, 0.98], [0.00, 1.00]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg,
+          colorFn: function (r, z, a, t) {
+            return t < 0.5 ? col([242, 232, 212], [246, 238, 222], t * 2)
+                           : col([214, 60, 48], [232, 92, 74], (t - 0.5) * 2);
+          }
+        });
+      }
+    },
+    {
+      id: "pin", name: "保龄球瓶", emoji: "🎳", tag: "玩具",
+      defaults: { H: 130, D: 56, seg: 96, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        var pr = profilePts(p.H, Rmax, [
+          [0.55, 0.00], [0.72, 0.05], [0.97, 0.18], [1.00, 0.28], [0.90, 0.40],
+          [0.62, 0.52], [0.45, 0.62], [0.40, 0.70], [0.44, 0.80], [0.52, 0.88],
+          [0.50, 0.94], [0.36, 0.99], [0.00, 1.00]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg,
+          colorFn: function (r, z, a, t) {
+            // 白瓶身 + 颈部红环
+            return (t > 0.60 && t < 0.72) ? [220, 40, 44] : col([240, 240, 244], [255, 255, 255], t);
+          }
+        });
+      }
+    },
+    {
+      id: "tree", name: "圣诞树", emoji: "🎄", tag: "节日",
+      defaults: { H: 130, D: 90, seg: 96, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        // 树干 + 三层锥体裙摆 + 顶尖
+        var pr = profilePts(p.H, Rmax, [
+          [0.22, 0.00], [0.22, 0.08], [0.95, 0.10], [0.45, 0.34], [0.78, 0.36],
+          [0.36, 0.58], [0.62, 0.60], [0.24, 0.80], [0.42, 0.82], [0.00, 1.00]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg, twist: (p.twist || 0) * Math.PI / 180, lobes: p.lobes || 0, lobeAmt: p.lobes ? 0.08 : 0,
+          colorFn: function (r, z, a, t) {
+            return t < 0.09 ? [118, 78, 48] : col([26, 112, 58], [92, 190, 108], t);
+          }
+        });
+      }
+    },
+    {
+      id: "lantern", name: "中式灯笼", emoji: "🏮", tag: "节日",
+      defaults: { H: 85, D: 95, seg: 120, twist: 0, lobes: 12 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        var pr = profilePts(p.H, Rmax, [
+          [0.24, 0.00], [0.26, 0.02], [0.32, 0.06], [0.85, 0.18], [1.00, 0.50],
+          [0.85, 0.82], [0.32, 0.94], [0.26, 0.98], [0.24, 1.00]
+        ]);
+        return S.buildRevolution(pr, {
+          seg: p.seg, lobes: p.lobes != null ? p.lobes : 12, lobeAmt: 0.05,
+          colorFn: function (r, z, a, t) {
+            return (t < 0.06 || t > 0.94) ? [250, 200, 80] : col([200, 30, 30], [244, 88, 58], Math.abs(t - 0.5) * 2);
+          }
+        });
+      }
+    },
+    {
+      id: "donut", name: "甜甜圈", emoji: "🍩", tag: "美食",
+      defaults: { H: 30, D: 90, seg: 110, twist: 0, lobes: 0 },
+      build: function (p) {
+        var S = global.SnapPrintCore, Rmax = p.D / 2;
+        var rt = Math.min(Math.max(p.H / 2, Rmax * 0.12), Rmax * 0.48);
+        var R = Rmax - rt;
+        var segV = Math.max(12, Math.round(p.seg * 0.4));
+        return S.buildTorus(R, rt, p.seg, segV, function (au, av, x, y, z) {
+          // 上半是糖霜（粉），下半是面包（棕金）
+          return z > rt * 0.15 ? col([238, 110, 160], [250, 160, 196], (Math.sin(au * 7) + 1) / 2)
+                               : col([206, 148, 84], [232, 186, 122], (z / rt + 1) / 2);
+        });
+      }
     }
   ];
 

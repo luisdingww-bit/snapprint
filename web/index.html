@@ -143,6 +143,7 @@
     .g-thumb canvas{width:100%;aspect-ratio:4/3;display:block;object-fit:cover}
     .g-card .t{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;
       background:var(--orange);color:#fff;padding:2px 8px;border-radius:999px;letter-spacing:.3px}
+    .g-card .t.t3d{background:var(--blue)}
     .g-body{padding:11px 13px 12px;display:flex;flex-direction:column;gap:3px;flex:1}
     .g-body .n{font-size:14px;font-weight:700;letter-spacing:-.1px}
     .g-body .a{font-size:12px;color:var(--muted)}
@@ -258,7 +259,7 @@
         <h2>精选模型</h2>
         <a class="more" href="#communities-sec">更多社区模型 →</a>
       </div>
-      <p class="sec-sub">9 款内置原创模型 · Apache-2.0 · 可自由打印/商用 —— 点击卡片即刻生成、预览与下载，无需照片。</p>
+      <p class="sec-sub">25 款内置原创模型（16 款真实3D立体几何 + 9 款浮雕）· Apache-2.0 · 可自由打印/商用 —— 点击卡片即刻生成、预览与下载，无需照片。蓝色角标为<b style="color:var(--blue)">真实3D</b>模型，可继续调高度/直径/扭转等参数。</p>
       <div class="g-grid" id="gallery"></div>
     </div>
 
@@ -743,6 +744,88 @@
     var G = window.SnapPrintGallery;
     if(!G) return;
     var grid = $("gallery");
+
+    /* — 真实3D模型卡片（three.js 离屏渲染缩略图，共享一个渲染器） — */
+    (function add3DCards(){
+      var T = window.SnapPrint3D;
+      if(!T || typeof THREE === "undefined") return;
+      var TW = 256, TH = 192;
+      var tr = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      tr.setSize(TW, TH);
+      var tsc = new THREE.Scene();
+      tsc.background = new THREE.Color(0xeceef1);
+      var tcam = new THREE.PerspectiveCamera(40, TW / TH, 0.1, 5000);
+      tsc.add(new THREE.AmbientLight(0xffffff, 0.7));
+      var tl1 = new THREE.DirectionalLight(0xffffff, 0.8); tl1.position.set(1, 2, 1.5); tsc.add(tl1);
+      var tl2 = new THREE.DirectionalLight(0xcfe0ff, 0.35); tl2.position.set(-1.5, -1, -1); tsc.add(tl2);
+
+      function drawThumb3D(m, canvas){
+        var n = m.V.length, nf = m.F.length;
+        var pos = new Float32Array(n * 3);
+        for(var i = 0; i < n; i++){ pos[i*3] = m.V[i][0]; pos[i*3+1] = m.V[i][2]; pos[i*3+2] = -m.V[i][1]; }
+        var idx = new Uint32Array(nf * 3);
+        for(i = 0; i < nf; i++){ idx[i*3] = m.F[i][0]; idx[i*3+1] = m.F[i][1]; idx[i*3+2] = m.F[i][2]; }
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        geo.setIndex(new THREE.BufferAttribute(idx, 1));
+        if(m.C){
+          var cl = new Float32Array(n * 3);
+          for(i = 0; i < n; i++){ cl[i*3] = m.C[i][0]/255; cl[i*3+1] = m.C[i][1]/255; cl[i*3+2] = m.C[i][2]/255; }
+          geo.setAttribute("color", new THREE.BufferAttribute(cl, 3));
+        }
+        geo.computeVertexNormals();
+        geo.computeBoundingBox();
+        var bb = geo.boundingBox, ctr = new THREE.Vector3();
+        bb.getCenter(ctr); geo.translate(-ctr.x, -ctr.y, -ctr.z);
+        var radius = bb.getSize(new THREE.Vector3()).length() * 0.5;
+        var mat = new THREE.MeshStandardMaterial({
+          vertexColors: !!m.C, color: m.C ? 0xffffff : 0xfa6831, metalness: 0.05, roughness: 0.7
+        });
+        var obj = new THREE.Mesh(geo, mat);
+        var grp = new THREE.Group();
+        grp.rotation.x = -0.42; grp.rotation.y = 0.65;
+        grp.add(obj); tsc.add(grp);
+        tcam.position.set(0, 0, radius * 2.5); tcam.lookAt(0, 0, 0);
+        tr.render(tsc, tcam);
+        canvas.width = TW; canvas.height = TH;
+        canvas.getContext("2d").drawImage(tr.domElement, 0, 0);
+        tsc.remove(grp); geo.dispose(); mat.dispose();
+      }
+
+      T.shapes.forEach(function(sh){
+        var card = document.createElement("div");
+        card.className = "g-card";
+        card.innerHTML =
+          '<div class="g-thumb"><span class="t t3d">真实3D · ' + sh.tag + '</span><canvas></canvas></div>' +
+          '<div class="g-body">' +
+            '<div class="n">' + sh.emoji + ' ' + sh.name + '</div>' +
+            '<div class="a">by <b>SnapPrint</b> · 参数化立体几何</div>' +
+            '<div class="g-foot">' +
+              '<span class="st">📐 ' + sh.defaults.D + '×' + sh.defaults.H + 'mm</span>' +
+              '<span class="st">🧊 水密</span>' +
+              '<span class="free">免费</span>' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" class="go2">立即生成</button>';
+        try{
+          var thumbMesh = window.SnapPrint3D.build(sh.id, { seg: Math.min(sh.defaults.seg, 72) });
+          drawThumb3D(thumbMesh, card.querySelector("canvas"));
+        }catch(e){ /* 缩略图失败不影响功能 */ }
+        card.addEventListener("click", function(){
+          var all = grid.querySelectorAll(".g-card");
+          for(var i = 0; i < all.length; i++) all[i].classList.remove("active");
+          card.classList.add("active");
+          galleryItem = null; P.lockMode = false;
+          P.mode = "solid3d";
+          $("go").disabled = false;
+          $("status").textContent = "正在生成「" + sh.name + "」…";
+          setShape(sh.id);   // 载入默认参数 → 重建面板 → 生成
+          $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        grid.appendChild(card);
+      });
+    })();
+
     G.items.forEach(function(item){
       var card = document.createElement("div");
       card.className = "g-card";

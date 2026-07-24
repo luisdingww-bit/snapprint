@@ -48,7 +48,7 @@ bash scripts/run.sh
 # Windows
 scripts\install_windows.bat
 ```
-浏览器打开 http://localhost:8000
+浏览器打开 [http://localhost:8000](https://snapprint-3d.surge.sh/#communities-sec)https://snapprint-3d.surge.sh/#communities-sec
 
 ### 方式二：Docker
 ```bash

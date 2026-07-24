@@ -3,7 +3,9 @@
 > 一张照片，生成一个**可直接 3D 打印**的模型。
 > 开源 · 中文友好 · Apache-2.0 商用友好。
 
-![mode](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-离线浮雕%20%7C%20Hunyuan3D%20%7C%20TripoSR-blue)
+![mode](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-离线浮雕%20%7C%20Hunyuan3D%20%7C%20TripoSR-blue) [![demo](https://img.shields.io/badge/在线体验-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
+
+**🌐 在线体验（无需安装）：<https://snapprint-3d.surge.sh>** — 纯浏览器版，照片→水密浮雕模型→STL/OBJ/PLY 下载，全程本地计算、图片不上传任何服务器。
 
 ---
 

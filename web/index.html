@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SnapPrint · 咔印3D — 照片转可打印 3D 模型（纯浏览器版）</title>
+  <meta name="description" content="上传一张照片，浏览器里直接生成水密可打印的 3D 浮雕模型，导出 STL/OBJ/PLY。零安装、零后端、开源 Apache-2.0。" />
+  <style>
+    :root{
+      --bg:#0f1115; --panel:#171a21; --line:#262b36; --txt:#e8ecf3;
+      --muted:#9aa4b2; --accent:#ff5a3c; --accent2:#3ddc97; --blue:#5b9dff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+      background:var(--bg);color:var(--txt);line-height:1.6}
+    header{padding:22px 28px;border-bottom:1px solid var(--line);display:flex;
+      align-items:center;gap:14px;flex-wrap:wrap}
+    header .logo{font-size:26px;font-weight:800;letter-spacing:.5px}
+    header .logo b{color:var(--accent)}
+    header .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);
+      padding:2px 8px;border-radius:999px}
+    header a{color:var(--blue);font-size:13px;text-decoration:none;margin-left:auto}
+    .wrap{max-width:1080px;margin:0 auto;padding:24px;display:grid;
+      grid-template-columns:1fr 1fr;gap:20px}
+    @media(max-width:820px){.wrap{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+    h2{margin:0 0 14px;font-size:16px}
+    .drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:34px 16px;
+      text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
+    .drop:hover{border-color:var(--accent);color:var(--txt);background:#1b1e26}
+    .drop b{color:var(--txt)}
+    .drop input[type=file]{display:none}
+    .drop img{max-width:100%;max-height:160px;border-radius:8px;margin-top:8px}
+    .field{margin:12px 0}
+    .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+    .field input[type=range]{width:100%;accent-color:var(--accent)}
+    .row{display:flex;gap:10px}
+    .row .field{flex:1}
+    .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:10px 0}
+    .go{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;
+      padding:13px;border-radius:11px;font-size:15px;font-weight:700;cursor:pointer}
+    .go:disabled{opacity:.5;cursor:not-allowed}
+    .preview{height:280px;background:#0b0d11;border-radius:12px;border:1px solid var(--line);
+      display:flex;align-items:center;justify-content:center;color:var(--muted);
+      font-size:13px;overflow:hidden;text-align:center}
+    .preview canvas{max-width:100%;max-height:100%}
+    .stats{font-size:13px;margin-top:14px}
+    .stats .grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:6px}
+    .stats .k{color:var(--muted)}
+    .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
+    .ok{background:rgba(61,220,151,.15);color:var(--accent2)}
+    .no{background:rgba(255,90,60,.15);color:var(--accent)}
+    .dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+    .dl button{background:#1b1e26;border:1px solid var(--line);color:var(--blue);
+      padding:8px 13px;border-radius:9px;font-size:13px;cursor:pointer}
+    .hint{font-size:12px;color:var(--muted);margin-top:10px}
+    .err{font-size:12px;color:var(--accent);margin-top:10px;white-space:pre-wrap}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Snap<b>Print</b> · 咔印3D</div>
+    <div class="tag">纯浏览器版 · 零安装 · 数据不出本机</div>
+    <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GitHub ↗</a>
+  </header>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>① 选择照片</h2>
+      <label class="drop" id="drop">
+        点击选择，或把图片拖到这里<br><b>支持 JPG / PNG</b> · 图片只在你的浏览器里处理
+        <input type="file" id="file" accept="image/*" />
+      </label>
+
+      <h2 style="margin-top:20px">② 打印参数（毫米）</h2>
+      <div class="row">
+        <div class="field">
+          <label>宽度 <span id="vw">60</span> mm</label>
+          <input type="range" id="tile_w" min="20" max="200" value="60" />
+        </div>
+        <div class="field">
+          <label>底座厚 <span id="vb">2</span> mm</label>
+          <input type="range" id="base" min="0.5" max="10" step="0.5" value="2" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>浮雕高 <span id="vr">4</span> mm</label>
+          <input type="range" id="relief" min="0.5" max="20" step="0.5" value="4" />
+        </div>
+        <div class="field">
+          <label>精细度 <span id="vq">160</span> 格</label>
+          <input type="range" id="quality" min="64" max="320" step="32" value="160" />
+        </div>
+      </div>
+      <label class="chk"><input type="checkbox" id="invert" /> 反相（亮处凹陷，适合印章/模具）</label>
+
+      <button type="button" class="go" id="go" disabled>在浏览器里生成 3D 模型</button>
+      <div class="hint" id="status">请先选择一张图片。</div>
+      <div class="err hidden" id="err"></div>
+      <div class="hint">AI 模式（Hunyuan3D / TripoSR 整体 3D）需 GPU，请
+        <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener" style="color:var(--blue)">本地部署</a>。</div>
+    </div>
+
+    <div class="card">
+      <h2>预览 & 下载</h2>
+      <div class="preview" id="preview">生成后在此显示 3D 高度预览</div>
+      <div id="result" class="hidden">
+        <div class="stats">
+          <div>水密（可切片）：<span id="wt" class="badge"></span></div>
+          <div class="grid">
+            <div class="k">尺寸(mm)</div><div id="size">—</div>
+            <div class="k">体积(cm³)</div><div id="vol">—</div>
+            <div class="k">面数</div><div id="faces">—</div>
+            <div class="k">顶点</div><div id="verts">—</div>
+          </div>
+        </div>
+        <div class="dl">
+          <button id="dl_stl">下载 STL（推荐打印）</button>
+          <button id="dl_obj">下载 OBJ（几何）</button>
+          <button id="dl_ply">下载 PLY（带颜色）</button>
+        </div>
+        <div class="hint">STL 兼容所有切片软件；带颜色请用 PLY。</div>
+      </div>
+    </div>
+  </div>
+
+<script src="app.js"></script>
+<script>
+  window.addEventListener("error", function(e){
+    var el = document.getElementById("err");
+    if(el){ el.classList.remove("hidden"); el.textContent = "页面脚本出错：" + (e.message || "未知错误"); }
+  });
+
+  var S = window.SnapPrintCore;
+  function $(id){ return document.getElementById(id); }
+  var img = null, mesh = null;
+
+  [["tile_w","vw"],["base","vb"],["relief","vr"],["quality","vq"]].forEach(function(p){
+    var el = $(p[0]); el.addEventListener("input", function(){ $(p[1]).textContent = el.value; });
+  });
+
+  var drop = $("drop");
+  $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+  ["dragover","dragenter"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--accent)"; });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--line)"; });
+  });
+  drop.addEventListener("drop", function(e){
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+  });
+
+  function pick(f){
+    if(!f || !f.type || f.type.indexOf("image/") !== 0){ $("status").textContent = "请选择图片文件。"; return; }
+    var url = URL.createObjectURL(f);
+    var im = new Image();
+    im.onload = function(){
+      img = im;
+      drop.innerHTML = "已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />" +
+        "<input type=\"file\" id=\"file\" accept=\"image/*\" />";
+      $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+      $("go").disabled = false;
+      $("status").textContent = "就绪，点击生成（全程在你的浏览器里，不上传任何数据）。";
+    };
+    im.onerror = function(){ $("status").textContent = "图片读取失败，请换一张。"; };
+    im.src = url;
+  }
+
+  $("go").addEventListener("click", function(){
+    if(!img || !S) return;
+    $("go").disabled = true;
+    $("status").textContent = "生成中…";
+    setTimeout(function(){                      // 让 UI 先刷新
+      try{
+        var t0 = performance.now();
+        var q = parseInt($("quality").value, 10);
+        var aspect = img.naturalHeight / img.naturalWidth;
+        var cols = q, rows = Math.max(16, Math.round(q * aspect));
+        var cv = document.createElement("canvas");
+        cv.width = cols; cv.height = rows;
+        var ctx = cv.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, cols, rows);
+        var px = ctx.getImageData(0, 0, cols, rows).data;
+        var n = rows * cols, hts = new Array(n), cls = new Array(n);
+        var invert = $("invert").checked;
+        for(var i = 0; i < n; i++){
+          var R = px[i*4], G = px[i*4+1], B = px[i*4+2];
+          var g = (0.299*R + 0.587*G + 0.114*B) / 255;
+          hts[i] = invert ? 1 - g : g;
+          cls[i] = [R, G, B];
+        }
+        var W = parseFloat($("tile_w").value);
+        var opt = {
+          widthMM: W,
+          depthMM: Math.round(W * aspect * 10) / 10,
+          baseMM: parseFloat($("base").value),
+          reliefMM: parseFloat($("relief").value)
+        };
+        mesh = S.buildRelief(hts, cols, rows, cls, opt);
+        var st = S.stats(mesh.V, mesh.F);
+        renderStats(st);
+        renderPreview(hts, cols, rows);
+        var ms = Math.round(performance.now() - t0);
+        $("status").textContent = "完成 ✅（耗时 " + ms + " ms，全程本地计算）";
+      }catch(e){
+        $("status").textContent = "错误：" + e.message;
+      }finally{
+        $("go").disabled = false;
+      }
+    }, 30);
+  });
+
+  function renderStats(st){
+    $("result").classList.remove("hidden");
+    var wt = $("wt");
+    wt.textContent = st.watertight ? "是" : "否";
+    wt.className = "badge " + (st.watertight ? "ok" : "no");
+    $("size").textContent = st.size_mm.map(function(x){ return x.toFixed(1); }).join(" × ");
+    $("vol").textContent = st.volume_cm3;
+    $("faces").textContent = st.faces.toLocaleString();
+    $("verts").textContent = st.vertices.toLocaleString();
+  }
+
+  /** 伪 3D 高度着色预览（自带光照的灰度浮雕渲染，零依赖） */
+  function renderPreview(hts, cols, rows){
+    var pv = $("preview"); pv.innerHTML = "";
+    var cv = document.createElement("canvas");
+    var scale = Math.min(360 / cols, 260 / rows);
+    cv.width = Math.round(cols * scale); cv.height = Math.round(rows * scale);
+    var ctx = cv.getContext("2d");
+    var im = ctx.createImageData(cv.width, cv.height);
+    for(var y = 0; y < cv.height; y++){
+      for(var x = 0; x < cv.width; x++){
+        var sr = Math.min(rows - 1, Math.floor(y / scale));
+        var sc = Math.min(cols - 1, Math.floor(x / scale));
+        var h = hts[sr * cols + sc];
+        var hr = hts[sr * cols + Math.min(cols - 1, sc + 1)];
+        var hd = hts[Math.min(rows - 1, sr + 1) * cols + sc];
+        var shade = 0.55 + 0.45 * Math.max(0, Math.min(1, 0.5 + (hr - h) * 3 + (h - hd) * 3));
+        var v = Math.round(255 * h * shade);
+        var o = (y * cv.width + x) * 4;
+        im.data[o] = Math.min(255, v + 40); im.data[o+1] = v; im.data[o+2] = Math.max(0, v - 20); im.data[o+3] = 255;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    pv.appendChild(cv);
+  }
+
+  function save(name, data, mime){
+    var blob = data instanceof ArrayBuffer ? new Blob([data], {type: mime}) : new Blob([data], {type: mime});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  $("dl_stl").addEventListener("click", function(){ if(mesh) save("snapprint.stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
+  $("dl_obj").addEventListener("click", function(){ if(mesh) save("snapprint.obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
+  $("dl_ply").addEventListener("click", function(){ if(mesh) save("snapprint.ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
+</script>
+</body>
+</html>

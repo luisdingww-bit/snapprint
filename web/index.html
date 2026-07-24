@@ -121,6 +121,23 @@
     .dl button.primary:hover{background:var(--orange-dark);color:#fff}
 
     .hint{font-size:12px;color:var(--muted);margin-top:10px}
+
+    /* 切片就绪预设 */
+    .preset{margin-top:18px;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:#fbfbfc}
+    .preset .p-head{font-size:14px;font-weight:800;margin-bottom:10px}
+    .preset .p-head span{font-size:12px;font-weight:400;color:var(--muted);margin-left:8px}
+    .preset .p-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+    .preset select{flex:1;min-width:150px;background:#fff;border:1.5px solid var(--line);
+      border-radius:9px;padding:8px 10px;font-size:13px;color:var(--txt);cursor:pointer}
+    .preset select:hover{border-color:var(--orange)}
+    .p-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .p-chips .pc{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:999px;
+      padding:4px 11px;color:var(--txt)}
+    .p-chips .pc b{color:var(--orange)}
+    .p-warn{font-size:12px;font-weight:700;color:#c0392b;background:rgba(250,104,49,.08);
+      border:1px solid rgba(250,104,49,.3);border-radius:9px;padding:8px 12px;margin-top:10px}
+    .preset .dl{margin-top:12px}
+
     .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
       padding-top:16px;border-top:1px dashed #f0c8b3}
     .hint a{color:var(--blue)}
@@ -291,6 +308,22 @@
             <button id="dl_gssplat">⬇ .splat（Web 查看器）</button>
           </div>
           <div class="hint" id="dl-hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
+
+          <!-- 切片就绪预设：按打印机 + 材料智能推荐参数，一键导出 -->
+          <div class="preset hidden" id="preset-box">
+            <div class="p-head">🖨 切片就绪预设<span>按你的打印机智能推荐参数</span></div>
+            <div class="p-row">
+              <select id="pr_printer" title="打印机"></select>
+              <select id="pr_mat" title="材料"></select>
+            </div>
+            <div class="p-chips" id="pr_chips"></div>
+            <div class="p-warn hidden" id="pr_warn"></div>
+            <div class="dl">
+              <button id="pr_ini" class="primary">⬇ 预设 .ini（PrusaSlicer / Orca 可导入）</button>
+              <button id="pr_txt">⬇ 参数卡 .txt</button>
+            </div>
+          </div>
+
           <div id="panel-bottom" class="hidden"></div>
         </div>
       </div>
@@ -346,6 +379,7 @@
 <script src="shapes3d.js"></script>
 <script src="modelio.js"></script>
 <script src="splat.js"></script>
+<script src="presets.js"></script>
 <script src="app.js"></script>
 <script>
   window.addEventListener("error", function(e){
@@ -623,6 +657,7 @@
     var isSplat = kind === "splat";
     $("dl-mesh").classList.toggle("hidden", isSplat);
     $("dl-splat").classList.toggle("hidden", !isSplat);
+    $("preset-box").classList.toggle("hidden", isSplat);   // 点云不可切片，隐藏预设
     $("dl-hint").textContent = isSplat
       ? "PLY（3DGS 标准）可导入 SuperSplat / Polycam / 各类高斯泼溅查看器；.splat 适用于 antimatter15 等 Web 查看器。点云不可直接切片打印。"
       : "STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。";
@@ -723,6 +758,7 @@
         renderStats(st);
         render3D(mesh);
         setResultKind("mesh");
+        if(window._presetRefresh) window._presetRefresh();  // 更新切片预设推荐
         $("panel-bottom").classList.remove("hidden");
         var ms = Math.round(performance.now() - t0);
         $("status").textContent = "完成 ✅（耗时 " + ms + " ms，全程本地计算）";
@@ -956,6 +992,57 @@
   $("dl_glb").addEventListener("click", function(){ if(mesh) save(dlName + ".glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
   $("dl_gsply").addEventListener("click", function(){ if(splat) save(dlName + ".ply", window.SnapPrintSplat.exportPLY(splat), "application/octet-stream"); });
   $("dl_gssplat").addEventListener("click", function(){ if(splat) save(dlName + ".splat", window.SnapPrintSplat.exportSplat(splat), "application/octet-stream"); });
+
+  /* —— 切片就绪预设：分析当前网格 → 推荐参数 → 一键导出 .ini / 参数卡 —— */
+  (function initPresets(){
+    var PR = window.SnapPrintPresets;
+    if(!PR || !$("preset-box")) return;
+    var selP = $("pr_printer"), selM = $("pr_mat");
+    PR.printers.forEach(function(p){
+      var o = document.createElement("option"); o.value = p.id; o.textContent = p.name; selP.appendChild(o);
+    });
+    PR.materials.forEach(function(m){
+      var o = document.createElement("option"); o.value = m.id; o.textContent = m.name; selM.appendChild(o);
+    });
+    var rec = null;
+    function refresh(){
+      if(!mesh) return;
+      rec = PR.analyze(mesh.V, mesh.F, { mode: P.mode });
+      var p = PR.printers.filter(function(x){ return x.id === selP.value; })[0] || PR.printers[0];
+      var m = PR.materials.filter(function(x){ return x.id === selM.value; })[0] || PR.materials[0];
+      var est = PR.estimate(rec, m);
+      var f = PR.fit(rec, p);
+      var chips = [
+        "层高 <b>" + rec.layer_height + "mm</b>",
+        "填充 <b>" + rec.infill + "%</b>",
+        "支撑 <b>" + (rec.supports ? "开" : "免") + "</b>",
+        "Brim <b>" + (rec.brim_mm > 0 ? rec.brim_mm + "mm" : "关") + "</b>",
+        "喷嘴 <b>" + m.nozzle + "°C</b>",
+        "热床 <b>" + m.bed + "°C</b>",
+        "估算 ≈<b>" + est.grams.toFixed(0) + "g</b> · <b>" + (est.minutes / 60).toFixed(1) + "h</b>"
+      ];
+      $("pr_chips").innerHTML = chips.map(function(c){ return '<span class="pc">' + c + '</span>'; }).join("");
+      var warn = $("pr_warn");
+      if(!f.ok){
+        warn.classList.remove("hidden");
+        warn.textContent = "⚠️ 模型 " + rec.size_mm.map(function(x){ return x.toFixed(0); }).join("×") +
+          " mm 超出 " + p.name + " 打印范围（" + p.bed.join("×") + " mm），请先缩小尺寸。";
+      }else{
+        warn.classList.add("hidden");
+      }
+    }
+    selP.addEventListener("change", refresh);
+    selM.addEventListener("change", refresh);
+    $("pr_ini").addEventListener("click", function(){
+      if(!mesh || !rec) return;
+      save(dlName + "-preset.ini", PR.exportINI(rec, selP.value, selM.value, dlName), "text/plain");
+    });
+    $("pr_txt").addEventListener("click", function(){
+      if(!mesh || !rec) return;
+      save(dlName + "-print-card.txt", PR.exportTXT(rec, selP.value, selM.value, dlName), "text/plain");
+    });
+    window._presetRefresh = refresh;
+  })();
 
   /* —— 模型库（Sketchfab 风格：筛选栏 + 统计卡片 + 点赞） —— */
   (function initLibrary(){

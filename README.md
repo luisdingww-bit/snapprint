@@ -5,7 +5,7 @@
 
 ![mode](https://img.shields.io/badge/license-Apache--2.0-green) ![mode](https://img.shields.io/badge/mode-离线浮雕%20%7C%20Hunyuan3D%20%7C%20TripoSR-blue) [![demo](https://img.shields.io/badge/在线体验-snapprint--3d.surge.sh-ff5a3c)](https://snapprint-3d.surge.sh)
 
-**🌐 在线体验（无需安装）：<https://snapprint-3d.surge.sh>** — 纯浏览器版，照片→水密浮雕模型→STL/OBJ/PLY 下载，全程本地计算、图片不上传任何服务器。
+**🌐 在线公共 Demo（无需安装）：<https://snapprint-3d.surge.sh>** — 纯浏览器版：照片浮雕 / 2D轮廓拉伸 / 真实3D几何 / 模型导入 / 3DGS高斯泼溅五模式 + 33 款内置模型库 + 切片就绪预设，全程本地计算、文件不上传任何服务器。
 
 ---
 
@@ -37,6 +37,8 @@
 - 🤖 **AI 模式（可插拔）**：统一接口接入 Hunyuan3D / TripoSR 等开源权重，获得更立体的模型
 - 🔧 **打印级后处理**：自动水密修复、减面、摆正、缩放到毫米
 - 📦 **多格式导出**：`OBJ`（几何，全切片器兼容）/ `PLY`（顶点颜色）/ `3MF`（颜色 + 打印元数据）
+- ⏳ **异步任务队列**：AI 模式耗时长时提交即返回 `task_id`，前端轮询显示分阶段进度条（解码 → 生成 → 后处理 → 导出）
+- 🖨️ **切片就绪预设**：按拓竹 / 创想 / Prusa / Elegoo / Anycubic 等常见机型 + PLA/PETG/TPU 材料，基于模型几何自动推荐层高、填充、支撑与 Brim，一键导出 PrusaSlicer / OrcaSlicer 可导入的 `.ini`（在线 Demo 内置）
 - 🌐 **中文界面与文档**，面向国内 3D 打印爱好者与创作者
 
 ## 快速开始（3 种方式）
@@ -48,7 +50,7 @@ bash scripts/run.sh
 # Windows
 scripts\install_windows.bat
 ```
-浏览器打开 [http://localhost:8000](https://snapprint-3d.surge.sh/#communities-sec)https://snapprint-3d.surge.sh/#communities-sec
+浏览器打开 http://localhost:8000 （不想本地部署？直接用[在线 Demo](https://snapprint-3d.surge.sh)）
 
 ### 方式二：Docker
 ```bash
@@ -88,7 +90,7 @@ snapprint/
 
 ## 路线图
 
-见 [docs/路线图.md](docs/路线图.md)：自动支撑生成、Blender/ComfyUI 插件、批量处理、模型动物园、在线 Demo。
+见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）已全部完成 ✅；下一步 v0.3：自动支撑建议、Blender/ComfyUI 插件。
 
 ## 许可证
 

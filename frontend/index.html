@@ -59,6 +59,13 @@
     .hint{font-size:12px;color:var(--muted);margin-top:10px}
     .err{font-size:12px;color:var(--accent);margin-top:10px;white-space:pre-wrap}
     .hidden{display:none}
+    /* 异步任务进度条 */
+    .pbox{margin-top:14px}
+    .pbar{height:10px;background:#1b1e26;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+    .pbar i{display:block;height:100%;width:0;border-radius:999px;
+      background:linear-gradient(90deg,var(--accent),#ff8a3c);transition:width .4s ease}
+    .pmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px}
+    .pmeta b{color:var(--txt);font-weight:600}
   </style>
 </head>
 <body>
@@ -106,6 +113,10 @@
       </div>
 
       <button type="button" class="go" id="go" disabled>生成可打印 3D 模型</button>
+      <div class="pbox hidden" id="pbox">
+        <div class="pbar"><i id="pfill"></i></div>
+        <div class="pmeta"><b id="pstage">排队中</b><span id="ppct">0%</span></div>
+      </div>
       <div class="hint" id="status">请先选择一张图片。</div>
       <div class="err hidden" id="err"></div>
     </div>
@@ -177,11 +188,47 @@
     $("status").textContent = "就绪，点击生成。";
   }
 
-  // 生成
+  // —— 进度条 UI ——
+  function progressShow(on){
+    $("pbox").classList.toggle("hidden", !on);
+    if(on) progressSet("排队中", 0);
+  }
+  function progressSet(stage, pct){
+    $("pfill").style.width = pct + "%";
+    $("pstage").textContent = stage;
+    $("ppct").textContent = pct + "%";
+  }
+
+  // —— 生成：优先走异步任务队列（AI 模式耗时长，前端轮询显示分阶段进度）——
+  //     老版本后端没有 /api/generate_async 时自动回退到同步接口。
+  var polling = null;
+  function finishJob(ok, msg){
+    if(polling){ clearInterval(polling); polling = null; }
+    $("go").disabled = false;
+    $("status").textContent = msg;
+    if(!ok) progressShow(false);
+  }
+  function pollTask(taskId){
+    polling = setInterval(function(){
+      fetch(API + "/api/tasks/" + taskId)
+        .then(function(r){ return r.json().then(function(j){ return r.ok ? j : Promise.reject(new Error(j.detail||"查询失败")); }); })
+        .then(function(t){
+          progressSet(t.stage || "处理中", t.progress || 0);
+          if(t.status === "done"){
+            show(t.result);
+            progressSet("完成", 100);
+            finishJob(true, "完成 ✅");
+          }else if(t.status === "error"){
+            finishJob(false, "错误：" + (t.error || "生成失败"));
+          }
+        })
+        .catch(function(e){ finishJob(false, "错误：" + e.message); });
+    }, 800);
+  }
   $("go").addEventListener("click", function(){
     if(!file) return;
     $("go").disabled = true;
-    $("status").textContent = "生成中…（离线浮雕通常 1–3 秒）";
+    $("status").textContent = mode === "relief" ? "生成中…（离线浮雕通常 1–3 秒）" : "已提交任务，AI 模式可能需要数十秒到几分钟…";
     var fd = new FormData();
     fd.append("file", file);
     fd.append("mode", mode);
@@ -189,11 +236,24 @@
     fd.append("tile_d", $("tile_d").value);
     fd.append("base", $("base").value);
     fd.append("relief", $("relief").value);
-    fetch(API + "/api/generate", { method:"POST", body: fd })
-      .then(function(r){ return r.json().then(function(j){ return r.ok ? j : Promise.reject(new Error(j.detail||"生成失败")); }); })
-      .then(function(j){ show(j); $("status").textContent = "完成 ✅"; })
-      .catch(function(e){ $("status").textContent = "错误：" + e.message; })
-      .finally(function(){ $("go").disabled = false; });
+    progressShow(true);
+    fetch(API + "/api/generate_async", { method:"POST", body: fd })
+      .then(function(r){
+        if(r.status === 404 || r.status === 405) return Promise.reject({fallback:true});
+        return r.json().then(function(j){ return r.ok ? j : Promise.reject(new Error(j.detail||"提交失败")); });
+      })
+      .then(function(j){ pollTask(j.task_id); })
+      .catch(function(e){
+        if(e && e.fallback){
+          // 老后端回退：同步接口
+          fetch(API + "/api/generate", { method:"POST", body: fd })
+            .then(function(r){ return r.json().then(function(j){ return r.ok ? j : Promise.reject(new Error(j.detail||"生成失败")); }); })
+            .then(function(j){ show(j); progressSet("完成", 100); finishJob(true, "完成 ✅"); })
+            .catch(function(err){ finishJob(false, "错误：" + err.message); });
+        }else{
+          finishJob(false, "错误：" + e.message);
+        }
+      });
   });
 
   function show(j){

@@ -59,6 +59,27 @@
     .hint{font-size:12px;color:var(--muted);margin-top:10px}
     .err{font-size:12px;color:var(--accent);margin-top:10px;white-space:pre-wrap}
     .hidden{display:none}
+    /* —— 模型画廊 —— */
+    .full{grid-column:1 / -1}
+    .g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:4px}
+    .g-card{background:#131720;border:1px solid var(--line);border-radius:12px;padding:10px;
+      cursor:pointer;text-align:center;transition:.15s;position:relative}
+    .g-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+    .g-card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+    .g-card canvas{width:100%;aspect-ratio:1;border-radius:8px;display:block;background:#0b0d11}
+    .g-card .n{font-size:13px;font-weight:700;margin-top:8px}
+    .g-card .d{font-size:11px;color:var(--muted);margin-top:2px}
+    .g-card .t{position:absolute;top:16px;right:16px;font-size:10px;background:rgba(255,90,60,.85);
+      color:#fff;padding:1px 7px;border-radius:999px}
+    .g-card .go2{margin-top:8px;width:100%;background:#1b1e26;border:1px solid var(--line);
+      color:var(--blue);padding:5px 0;border-radius:8px;font-size:12px;cursor:pointer}
+    .g-card:hover .go2{border-color:var(--accent);color:var(--accent)}
+    .comm{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+    .comm a{flex:1 1 240px;display:block;background:#131720;border:1px solid var(--line);
+      border-radius:10px;padding:10px 14px;text-decoration:none;transition:.15s}
+    .comm a:hover{border-color:var(--blue)}
+    .comm .cn{color:var(--blue);font-size:13px;font-weight:700}
+    .comm .cd{color:var(--muted);font-size:11px;margin-top:2px}
   </style>
 </head>
 <body>
@@ -128,9 +149,21 @@
         <div class="hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
       </div>
     </div>
+    <div class="card full">
+      <h2>🎁 模型画廊 —— 点一个直接生成，无需照片</h2>
+      <div class="hint" style="margin:0 0 12px">9 款内置精选模型（原创 · Apache-2.0 · 可自由打印/商用），点击卡片即可 3D 预览并下载 STL/OBJ/PLY/GLB。</div>
+      <div class="g-grid" id="gallery"></div>
+    </div>
+
+    <div class="card full">
+      <h2>🌍 更多灵感 —— 各大模型社区</h2>
+      <div class="hint" style="margin:0 0 12px">想要人物手办、机械结构等复杂模型？这些社区有海量作品（下载时请留意各模型的许可协议）。</div>
+      <div class="comm" id="communities"></div>
+    </div>
   </div>
 
 <script src="vendor/three.min.js"></script>
+<script src="gallery.js"></script>
 <script src="app.js"></script>
 <script>
   window.addEventListener("error", function(e){
@@ -344,10 +377,58 @@
     a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
   }
-  $("dl_stl").addEventListener("click", function(){ if(mesh) save("snapprint.stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
-  $("dl_obj").addEventListener("click", function(){ if(mesh) save("snapprint.obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
-  $("dl_ply").addEventListener("click", function(){ if(mesh) save("snapprint.ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
-  $("dl_glb").addEventListener("click", function(){ if(mesh) save("snapprint.glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
+  var dlName = "snapprint";
+  $("dl_stl").addEventListener("click", function(){ if(mesh) save(dlName + ".stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
+  $("dl_obj").addEventListener("click", function(){ if(mesh) save(dlName + ".obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
+  $("dl_ply").addEventListener("click", function(){ if(mesh) save(dlName + ".ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
+  $("dl_glb").addEventListener("click", function(){ if(mesh) save(dlName + ".glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
+
+  /* —— 模型画廊 —— */
+  (function initGallery(){
+    var G = window.SnapPrintGallery;
+    if(!G) return;
+    var grid = $("gallery");
+    G.items.forEach(function(item){
+      var card = document.createElement("div");
+      card.className = "g-card";
+      card.innerHTML = '<span class="t">' + item.tag + '</span>' +
+        '<canvas></canvas>' +
+        '<div class="n">' + item.name + '</div>' +
+        '<div class="d">' + item.desc + ' · ' + item.opt.widthMM + 'mm</div>' +
+        '<button type="button" class="go2">生成此模型</button>';
+      G.drawThumb(item, card.querySelector("canvas"), 128);
+      card.addEventListener("click", function(){
+        var all = grid.querySelectorAll(".g-card");
+        for(var i = 0; i < all.length; i++) all[i].classList.remove("active");
+        card.classList.add("active");
+        $("status").textContent = "正在生成「" + item.name + "」…";
+        setTimeout(function(){
+          try{
+            var t0 = performance.now();
+            mesh = G.buildItem(item, 180);
+            dlName = "snapprint-" + item.id;
+            var st = S.stats(mesh.V, mesh.F);
+            renderStats(st);
+            render3D(mesh);
+            $("status").textContent = "「" + item.name + "」完成 ✅（" +
+              Math.round(performance.now() - t0) + " ms）右侧预览可旋转，下方按钮下载。";
+            $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
+          }catch(e){
+            $("status").textContent = "错误：" + e.message;
+          }
+        }, 30);
+      });
+      grid.appendChild(card);
+    });
+
+    var comm = $("communities");
+    G.communities.forEach(function(c){
+      var a = document.createElement("a");
+      a.href = c.url; a.target = "_blank"; a.rel = "noopener";
+      a.innerHTML = '<div class="cn">' + c.name + ' ↗</div><div class="cd">' + c.desc + '</div>';
+      comm.appendChild(a);
+    });
+  })();
 </script>
 </body>
 </html>

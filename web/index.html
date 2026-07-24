@@ -35,6 +35,9 @@
       font-size:13px;font-weight:700;letter-spacing:.4px;padding:9px 18px;border-radius:8px;
       transition:.15s}
     .nav .cta:hover{background:var(--orange-dark)}
+    .nav .lang{margin-right:10px;font-size:12px;font-weight:700;color:var(--muted);
+      text-decoration:none;padding:7px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+    .nav .lang:hover{color:var(--orange);border-color:var(--orange)}
     @media(max-width:720px){.nav-links{display:none}}
 
     /* ── Hero 横幅 ── */
@@ -147,6 +150,10 @@
       background:#eef4ff;border:1px solid #c5d8ff;border-radius:9px;padding:9px 12px;cursor:pointer}
     .p-blender button:hover{background:#e2ecff}
     .p-blender .hint{margin-top:7px}
+    .adv-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 2px;font-size:13px;color:var(--ink)}
+    .adv-row .adv-label{font-weight:700}
+    .adv-row select{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+    .adv-row .adv-note{font-size:12px;color:var(--muted)}
 
     .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
       padding-top:16px;border-top:1px dashed #f0c8b3}
@@ -246,11 +253,12 @@
     <div class="nav-in">
       <a class="logo" href="#"><span class="mark">S</span>Snap<b>Print</b></a>
       <div class="nav-links">
-        <a href="#make">创作</a>
-        <a href="#gallery-sec">模型库</a>
-        <a href="#gs-sec">高斯泼溅</a>
-        <a href="#communities-sec">社区</a>
+        <a href="#make" data-i18n="navMake">创作</a>
+        <a href="#gallery-sec" data-i18n="navGallery">模型库</a>
+        <a href="#gs-sec" data-i18n="navGs">高斯泼溅</a>
+        <a href="#communities-sec" data-i18n="navComm">社区</a>
       </div>
+      <a class="lang" id="lang-btn" href="javascript:void(0)" title="Language / 语言">EN</a>
       <a class="cta" href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GITHUB ↗</a>
     </div>
   </nav>
@@ -258,8 +266,8 @@
   <!-- Hero -->
   <div class="hero">
     <div class="hero-in">
-      <h1>一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em></h1>
-      <p>照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入 + 3DGS 高斯泼溅五模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格或高斯点云，直接下载 STL / OBJ / PLY / GLB / .splat。</p>
+      <h1 data-i18n-html="heroTitle">一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em></h1>
+      <p data-i18n="heroSub">照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入 + 3DGS 高斯泼溅五模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格或高斯点云，直接下载 STL / OBJ / PLY / GLB / .splat。</p>
       <div class="chips">
         <span class="chip">✓ 数据不出本机</span>
         <span class="chip">✓ 照片浮雕</span>
@@ -285,9 +293,14 @@
 
         <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
         <div id="panel-top"></div>
+        <div class="adv-row" id="adv-row">
+          <label class="adv-label" data-i18n="modelLabel">AI 模型（垂类，可选）</label>
+          <select id="model-sel"></select>
+          <span class="adv-note" data-i18n="modelNote">AI 模式需本地部署后端（Hunyuan3D / TripoSR）</span>
+        </div>
 
-        <button type="button" class="go" id="go" disabled>生成 3D 模型</button>
-        <div class="hint" id="status">请先选择一张图片。</div>
+        <button type="button" class="go" id="go" disabled data-i18n="goBtn">生成 3D 模型</button>
+        <div class="hint" id="status" data-i18n="statusInit">请先选择一张图片。</div>
         <div class="err hidden" id="err"></div>
         <div class="hint">AI 模式（Hunyuan3D / TripoSR 整体 3D）需 GPU，请
           <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">本地部署</a>。</div>
@@ -296,7 +309,7 @@
       <div class="card">
         <h2><span class="num">3</span>预览 &amp; 下载</h2>
         <p class="sub">拖拽旋转 · 滚轮缩放 · 支持触屏。</p>
-        <div class="preview" id="preview">生成后在此显示可旋转的 3D 模型</div>
+        <div class="preview" id="preview" data-i18n="previewHint">生成后在此显示可旋转的 3D 模型</div>
         <div id="result" class="hidden">
           <div class="stats">
             <div>水密（可切片）：<span id="wt" class="badge"></span></div>
@@ -321,7 +334,7 @@
 
           <!-- 切片就绪预设：按打印机 + 材料智能推荐参数，一键导出 -->
           <div class="preset hidden" id="preset-box">
-            <div class="p-head">🖨 切片就绪预设<span>按你的打印机智能推荐参数</span></div>
+            <div class="p-head" data-i18n-html="presetHead">🖨 切片就绪预设<span>按你的打印机智能推荐参数</span></div>
             <div class="p-row">
               <select id="pr_printer" title="打印机"></select>
               <select id="pr_mat" title="材料"></select>
@@ -347,10 +360,10 @@
     <!-- 模型库（Sketchfab 风格：筛选栏 + 统一网格） -->
     <div class="section" id="gallery-sec">
       <div class="sec-head">
-        <h2>模型库</h2>
-        <a class="more" href="#communities-sec">更多社区模型 →</a>
+        <h2 data-i18n="galleryTitle">模型库</h2>
+        <a class="more" href="#communities-sec" data-i18n="galleryMore">更多社区模型 →</a>
       </div>
-      <p class="sec-sub" id="gs-sec">33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。</p>
+      <p class="sec-sub" id="gs-sec" data-i18n="gallerySub">33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。</p>
 
       <!-- 筛选工具栏 -->
       <div class="lib-bar">
@@ -1076,6 +1089,76 @@
       $("blender_tip").classList.remove("hidden");
     });
     window._presetRefresh = refresh;
+  })();
+
+  // 模型动物园（垂类模型选择；本地部署后端 AI 模式将据此加载对应权重）
+  (function initModelZoo(){
+    var ZOO = [
+      {id:"hunyuan3d", name:"Hunyuan3D-2（通用）", domain:"通用"},
+      {id:"triposr", name:"TripoSR（快速）", domain:"通用"},
+      {id:"figure", name:"手办（社区微调）", domain:"手办"},
+      {id:"jewelry", name:"珠宝（社区微调）", domain:"珠宝"},
+      {id:"ecom", name:"电商（社区微调）", domain:"电商"},
+    ];
+    var sel = $("model-sel"); if(!sel) return;
+    window.SNAP_MODEL = "";
+    var o0 = document.createElement("option"); o0.value=""; o0.textContent="默认（按模式）"; sel.appendChild(o0);
+    ZOO.forEach(function(m){
+      var o = document.createElement("option"); o.value=m.id;
+      o.textContent = m.name + " · " + m.domain + (m.domain!=="通用" ? "（需自备权重）" : "");
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function(){ window.SNAP_MODEL = sel.value; });
+  })();
+
+  // 轻量多语言（中英）：data-i18n=纯文本，data-i18n-html=含标签文本
+  (function initI18n(){
+    var I18N = {
+      zh: {
+        navMake:"创作", navGallery:"模型库", navGs:"高斯泼溅", navComm:"社区",
+        heroTitle:'一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em>',
+        heroSub:"照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入 + 3DGS 高斯泼溅五模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格或高斯点云，直接下载 STL / OBJ / PLY / GLB / .splat。",
+        goBtn:"生成 3D 模型", statusInit:"请先选择一张图片。",
+        previewHint:"生成后在此显示可旋转的 3D 模型",
+        presetHead:'🖨 切片就绪预设<span>按你的打印机智能推荐参数</span>',
+        galleryTitle:"模型库", galleryMore:"更多社区模型 →",
+        gallerySub:"33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。",
+        modelLabel:"AI 模型（垂类，可选）", modelNote:"AI 模式需本地部署后端（Hunyuan3D / TripoSR）"
+      },
+      en: {
+        navMake:"Create", navGallery:"Model Library", navGs:"Gaussian Splatting", navComm:"Community",
+        heroTitle:'Turn a photo / a logo / a few params / your own model into a <em>printable 3D model</em>',
+        heroSub:"Five modes — photo relief + 2D outline extrude + real 3D geometry + model import + 3DGS Gaussian splatting — all run in your browser. Zero install, zero upload, instant watertight sliceable mesh or Gaussian point cloud. Download STL / OBJ / PLY / GLB / .splat directly.",
+        goBtn:"Generate 3D Model", statusInit:"Please choose an image first.",
+        previewHint:"The rotatable 3D model appears here after generation",
+        presetHead:'🖨 Slice-ready Preset<span>Smart parameters for your printer</span>',
+        galleryTitle:"Model Library", galleryMore:"More community models →",
+        gallerySub:"33 built-in original models (16 real 3D + 9 relief + 8 Gaussian splatting) · Apache-2.0, free to print/commercialize — all downloadable; click a card to generate, preview and export instantly.",
+        modelLabel:"AI Model (domain, optional)", modelNote:"AI mode needs a locally deployed backend (Hunyuan3D / TripoSR)"
+      }
+    };
+    function applyLang(lang){
+      var dict = I18N[lang] || I18N.zh;
+      document.querySelectorAll("[data-i18n]").forEach(function(el){
+        var k = el.getAttribute("data-i18n");
+        if(dict[k] != null) el.textContent = dict[k];
+      });
+      document.querySelectorAll("[data-i18n-html]").forEach(function(el){
+        var k = el.getAttribute("data-i18n-html");
+        if(dict[k] != null) el.innerHTML = dict[k];
+      });
+      var btn = $("lang-btn"); if(btn) btn.textContent = (lang==="zh" ? "EN" : "中文");
+      document.documentElement.lang = (lang==="zh" ? "zh-CN" : "en");
+      try{ localStorage.setItem("snapprint_lang", lang); }catch(e){}
+    }
+    var btn = $("lang-btn");
+    if(btn) btn.addEventListener("click", function(){
+      var cur = (document.documentElement.lang||"zh-CN").indexOf("en") === 0 ? "en" : "zh";
+      applyLang(cur==="zh" ? "en" : "zh");
+    });
+    var saved = null; try{ saved = localStorage.getItem("snapprint_lang"); }catch(e){}
+    var init = saved || (navigator.language && navigator.language.toLowerCase().indexOf("en") === 0 ? "en" : "zh");
+    applyLang(init);
   })();
 
   /* —— 模型库（Sketchfab 风格：筛选栏 + 统计卡片 + 点赞） —— */

@@ -22,6 +22,7 @@ def run(
     out_dir: "str | Path | None" = None,
     name: str = "model",
     progress_cb=None,
+    model: str = "",
 ) -> dict:
     """执行一次「照片 -> 可打印 3D」转换。
 
@@ -48,7 +49,7 @@ def run(
     _p("解码图片", 5)
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-    backend = get_backend(mode, cfg)
+    backend = get_backend(mode, cfg, model)
     _p(f"生成原始网格（{backend.name}）", 15)
     raw = backend.generate(image, steps=cfg.ai_steps, device=cfg.ai_device)
 

@@ -40,15 +40,19 @@
 - ⏳ **异步任务队列**：AI 模式耗时长时提交即返回 `task_id`，前端轮询显示分阶段进度条（解码 → 生成 → 后处理 → 导出）
 - 🖨️ **切片就绪预设**：按拓竹 / 创想 / Prusa / Elegoo / Anycubic 等常见机型 + PLA/PETG/TPU 材料，基于模型几何自动推荐层高、填充、支撑与 Brim，一键导出 PrusaSlicer / OrcaSlicer 可导入的 `.ini`（在线 Demo 内置）
 - 🌐 **中文界面与文档**，面向国内 3D 打印爱好者与创作者
+- 🦖 **模型动物园**：Hunyuan3D-2 / TripoSR 基础模型 + 手办 / 珠宝 / 电商等社区微调垂类，权重自备即插即用
+- 📦 **批量生成**：`POST /api/batch` 一次提交多张图片，各自独立异步任务
+- 🔐 **API Key 鉴权 + 限流**：内网 / 小团队部署可设 `SNAPRINT_API_KEY` 与 `SNAPRINT_RATE_LIMIT` 防滥用
+- 🌍 **多语言**：Web UI 右上角一键切换中文 / English
 
 ## 快速开始（3 种方式）
 
-### 方式一：一键脚本（推荐新手）
+### 方式一：启动脚本（推荐新手）
 ```bash
-# Linux / macOS
-bash scripts/run.sh
-# Windows
-scripts\install_windows.bat
+# 任意平台（需先 pip install -r requirements.txt）
+python scripts/start_backend.py
+# 或自定义端口
+PORT=8080 python scripts/start_backend.py
 ```
 浏览器打开 http://localhost:8000 （不想本地部署？直接用[在线 Demo](https://snapprint-3d.surge.sh)）
 
@@ -101,7 +105,11 @@ SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，
 |---|---|
 | `POST /api/generate_async` | 提交生成，立即返回 `task_id` |
 | `GET  /api/tasks/{id}` | 轮询状态 / 分阶段进度 / 结果（含下载链接） |
+| `POST /api/batch` | 批量生成，接收多文件，返回各自 `task_id` 列表 |
 | `POST /api/analyze` | 上传图片或网格（stl/obj/ply/3mf），返回可打印性 / 支撑建议 JSON |
+| `GET  /api/models` | 列出模型动物园（含本机权重可用性探测） |
+
+**安全（内网 / 小团队）**：设置环境变量 `SNAPRINT_API_KEY` 后，生成 / 分析 / 批量接口需携带请求头 `X-API-Key`；设置 `SNAPRINT_RATE_LIMIT=N` 启用每客户端每分钟 N 次限流。两者均未设置时完全开放（方便本地 / 公开 Demo）。
 
 ### Blender 插件
 1. 先把 `blender/SnapPrintBlender/` 整个文件夹复制到 Blender 的 `scripts/addons/` 目录；
@@ -117,7 +125,7 @@ SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，
 
 ## 路线图
 
-见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）与 v0.3（自动支撑建议 / Blender 插件 / ComfyUI 节点）均已完成 ✅。
+见 [docs/路线图.md](docs/路线图.md)。v0.2（异步任务队列 / 在线公共 Demo / 切片就绪预设）、v0.3（自动支撑建议 / Blender 插件 / ComfyUI 节点）与 v0.4（模型动物园 / 批量生成 + API Key 限流 / 多语言文档）均已完成 ✅。
 
 ## 许可证
 

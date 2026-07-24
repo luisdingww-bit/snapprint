@@ -26,6 +26,9 @@ outputs/*
 Thumbs.db
 .cache/
 
+# 本地测试依赖（隔离安装目录，不入库）
+.pytestdeps/
+
 # IDE
 .idea/
 .vscode/

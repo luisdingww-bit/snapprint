@@ -1,6 +1,7 @@
 """SnapPrint 默认配置。"""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 
@@ -37,3 +38,58 @@ class SnapConfig:
 
 
 DEFAULT_CONFIG = SnapConfig()
+
+
+# ---------------------------------------------------------------------------
+# 模型动物园（Model Zoo）
+# 基础模型 + 社区微调垂类。权重需用户自备并放入 cfg.model_dir 对应子目录。
+# `available` 仅作前端标注；真正的可用性由本机 models/ 目录是否存在权重决定
+# （见 resolve_model / 后端 /api/models 的本地探测）。
+# ---------------------------------------------------------------------------
+MODEL_ZOO: list[dict] = [
+    {
+        "id": "hunyuan3d", "name": "Hunyuan3D-2（通用底座）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2", "domain": "通用", "available": True,
+        "note": "腾讯开源通用图生3D，首次使用自动从 HuggingFace 拉取权重",
+    },
+    {
+        "id": "triposr", "name": "TripoSR（轻量快速）", "backend": "triposr",
+        "weights": "TripoSR", "domain": "通用", "available": True,
+        "note": "Stability 开源，单图秒级重建，需自备 GPU 权重",
+    },
+    {
+        "id": "figure", "name": "手办模型（社区微调）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-figure", "domain": "手办", "available": False,
+        "note": "适合人形/手办细节；将权重放置于 models/Hunyuan3D-2-figure",
+    },
+    {
+        "id": "jewelry", "name": "珠宝模型（社区微调）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-jewelry", "domain": "珠宝", "available": False,
+        "note": "金属/宝石反光细节；权重放置于 models/Hunyuan3D-2-jewelry",
+    },
+    {
+        "id": "ecom", "name": "电商模型（社区微调）", "backend": "hunyuan3d",
+        "weights": "Hunyuan3D-2-ecom", "domain": "电商", "available": False,
+        "note": "商品白底图优化；权重放置于 models/Hunyuan3D-2-ecom",
+    },
+]
+
+# 本地确实存在的权重目录（供 /api/models 标注 available）
+def _local_weights_present(cfg, weights: str) -> bool:
+    return os.path.isdir(os.path.join(getattr(cfg, "model_dir", "models"), weights))
+
+
+def resolve_model(model_id: str = "", cfg=None) -> tuple:
+    """把 model_id 解析为 (backend_name, weights_dir, domain)。
+
+    - 空 / 未知 → 回退通用 hunyuan3d 的默认权重
+    - 命中垂类 → 返回其 backend + 专用权重目录
+    离线浮雕模式忽略 model。
+    """
+    if not model_id:
+        return "hunyuan3d", "Hunyuan3D-2", "通用"
+    for m in MODEL_ZOO:
+        if m["id"] == model_id:
+            return m["backend"], m["weights"], m["domain"]
+    return "hunyuan3d", "Hunyuan3D-2", "通用"
+

@@ -5,20 +5,29 @@
   POST /api/generate        同步生成（浮雕模式秒级，保留向后兼容）
   POST /api/generate_async  异步生成 -> 立即返回 task_id（AI 模式耗时长时用）
   GET  /api/tasks/{id}      查询任务状态 / 分阶段进度 / 结果
+  POST /api/batch           批量生成（多图 -> 多个异步任务）
+  POST /api/analyze         可打印性 / 支撑建议分析
+  GET  /api/models          列出模型动物园（含本地权重可用性探测）
   GET  /outputs/*           下载生成的 OBJ / PLY / 3MF
+
+可选安全（内网 / 小团队部署）：
+  设置环境变量 SNAPRINT_API_KEY 启用 API Key 校验（请求头 X-API-Key）；
+  设置 SNAPRINT_RATE_LIMIT=N 启用每客户端每分钟 N 次限流。
+  两者均未设置时完全开放（默认，方便本地 / 公开 Demo）。
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import SnapConfig
+from .config import DEFAULT_CONFIG, MODEL_ZOO, SnapConfig, _local_weights_present
 from .pipeline import run
 from . import advisor
 
@@ -27,7 +36,30 @@ FRONTEND = ROOT / "frontend"
 OUTPUTS = ROOT / "outputs"
 OUTPUTS.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SnapPrint · 咔印3D", version="0.2.0")
+app = FastAPI(title="SnapPrint · 咔印3D", version="0.3.0")
+
+# ---------------------------------------------------------------------------
+# 安全：可选 API Key 校验 + 内存令牌桶限流
+# ---------------------------------------------------------------------------
+API_KEY = os.environ.get("SNAPRINT_API_KEY", "")
+RATE_LIMIT = int(os.environ.get("SNAPRINT_RATE_LIMIT", "0"))  # 每分钟上限，0=不限
+_RATE: dict[str, list[float]] = {}
+
+
+def guard(_request: Request, x_api_key: str = Header(None)) -> None:
+    """可选鉴权 + 限流依赖。未配置 SNAPRINT_API_KEY 时直接放行。"""
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="无效或缺失 API Key（请求头 X-API-Key 提供）")
+    if RATE_LIMIT > 0:
+        fwd = _request.headers.get("x-forwarded-for", "")
+        key = "key:" + (x_api_key or fwd or (_request.client.host if _request.client else "anon"))
+        now = time.time()
+        hits = [t for t in _RATE.get(key, []) if now - t < 60]
+        if len(hits) >= RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+        hits.append(now)
+        _RATE[key] = hits
+
 
 # ---------------------------------------------------------------------------
 # 异步任务队列（内存注册表 + 后台线程；单机部署零额外依赖）
@@ -48,11 +80,7 @@ def _task_prune() -> None:
     """清理过期 / 超量的已完成任务（在创建新任务时顺带执行）。"""
     now = time.time()
     with _TASKS_LOCK:
-        done = [
-            (tid, t)
-            for tid, t in TASKS.items()
-            if t["status"] in ("done", "error")
-        ]
+        done = [(tid, t) for tid, t in TASKS.items() if t["status"] in ("done", "error")]
         for tid, t in done:
             if now - t["created"] > _TASK_TTL_SEC:
                 TASKS.pop(tid, None)
@@ -60,6 +88,16 @@ def _task_prune() -> None:
         if overflow > 0:
             for tid, _ in sorted(done, key=lambda x: x[1]["created"])[:overflow]:
                 TASKS.pop(tid, None)
+
+
+def _build_cfg(*, tile_w=60.0, tile_d=60.0, base=2.0, relief=4.0, target_tris=80000) -> SnapConfig:
+    return SnapConfig(
+        tile_width_mm=tile_w,
+        tile_depth_mm=tile_d,
+        base_thickness_mm=base,
+        relief_depth_mm=relief,
+        target_triangles=target_tris,
+    )
 
 
 def _files_to_download(job: str, stats: dict) -> dict:
@@ -75,7 +113,7 @@ def _files_to_download(job: str, stats: dict) -> dict:
     return download
 
 
-def _run_task(task_id: str, data: bytes, mode: str, cfg: SnapConfig) -> None:
+def _run_task(task_id, data, mode, model, cfg) -> None:
     """后台线程执行体：跑流水线并把分阶段进度写进注册表。"""
 
     def cb(stage: str, pct: int) -> None:
@@ -84,7 +122,8 @@ def _run_task(task_id: str, data: bytes, mode: str, cfg: SnapConfig) -> None:
     try:
         out_dir = OUTPUTS / task_id
         result = run(
-            data, mode=mode, cfg=cfg, out_dir=out_dir, name="model", progress_cb=cb
+            data, mode=mode, cfg=cfg, out_dir=out_dir, name="model",
+            progress_cb=cb, model=model,
         )
         stats = result["stats"]
         download = _files_to_download(task_id, stats)
@@ -99,69 +138,8 @@ def _run_task(task_id: str, data: bytes, mode: str, cfg: SnapConfig) -> None:
         _task_update(task_id, status="error", stage="失败", error=str(e))
 
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    html = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
-
-
-@app.post("/api/generate")
-async def generate(
-    file: UploadFile = File(...),
-    mode: str = Form("relief"),
-    tile_w: float = Form(60.0),
-    tile_d: float = Form(60.0),
-    base: float = Form(2.0),
-    relief: float = Form(4.0),
-    target_tris: int = Form(80000),
-):
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="请上传图片文件")
-
-    data = await file.read()
-    cfg = SnapConfig(
-        tile_width_mm=tile_w,
-        tile_depth_mm=tile_d,
-        base_thickness_mm=base,
-        relief_depth_mm=relief,
-        target_triangles=target_tris,
-    )
-
-    job = uuid.uuid4().hex[:8]
-    out_dir = OUTPUTS / job
-    try:
-        result = run(data, mode=mode, cfg=cfg, out_dir=out_dir, name="model")
-    except Exception as e:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=f"生成失败: {e}")
-
-    stats = result["stats"]
-    download = _files_to_download(job, stats)
-    return JSONResponse({"mode": result["mode"], "stats": stats, "files": download})
-
-
-@app.post("/api/generate_async")
-async def generate_async(
-    file: UploadFile = File(...),
-    mode: str = Form("relief"),
-    tile_w: float = Form(60.0),
-    tile_d: float = Form(60.0),
-    base: float = Form(2.0),
-    relief: float = Form(4.0),
-    target_tris: int = Form(80000),
-):
-    """异步生成：立即返回 task_id，前端轮询 /api/tasks/{id} 获取进度。"""
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="请上传图片文件")
-
-    data = await file.read()
-    cfg = SnapConfig(
-        tile_width_mm=tile_w,
-        tile_depth_mm=tile_d,
-        base_thickness_mm=base,
-        relief_depth_mm=relief,
-        target_triangles=target_tris,
-    )
-
+def _submit_task(data: bytes, mode: str, model: str, cfg: SnapConfig) -> str:
+    """提交一个生成任务到后台线程，返回 task_id。"""
     _task_prune()
     task_id = uuid.uuid4().hex[:12]
     with _TASKS_LOCK:
@@ -174,10 +152,84 @@ async def generate_async(
             "result": None,
             "error": None,
         }
-    threading.Thread(
-        target=_run_task, args=(task_id, data, mode, cfg), daemon=True
-    ).start()
+    threading.Thread(target=_run_task, args=(task_id, data, mode, model, cfg), daemon=True).start()
+    return task_id
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    html = (FRONTEND / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
+
+
+@app.post("/api/generate")
+async def generate(
+    file: UploadFile = File(...),
+    mode: str = Form("relief"),
+    model: str = Form(""),
+    tile_w: float = Form(60.0),
+    tile_d: float = Form(60.0),
+    base: float = Form(2.0),
+    relief: float = Form(4.0),
+    target_tris: int = Form(80000),
+    _: None = Depends(guard),
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+
+    data = await file.read()
+    cfg = _build_cfg(tile_w=tile_w, tile_d=tile_d, base=base, relief=relief, target_tris=target_tris)
+
+    try:
+        result = run(data, mode=mode, cfg=cfg, out_dir=OUTPUTS / "sync", name="model", model=model)
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"生成失败: {e}")
+
+    stats = result["stats"]
+    download = _files_to_download("sync", stats)
+    return JSONResponse({"mode": result["mode"], "stats": stats, "files": download})
+
+
+@app.post("/api/generate_async")
+async def generate_async(
+    file: UploadFile = File(...),
+    mode: str = Form("relief"),
+    model: str = Form(""),
+    tile_w: float = Form(60.0),
+    tile_d: float = Form(60.0),
+    base: float = Form(2.0),
+    relief: float = Form(4.0),
+    target_tris: int = Form(80000),
+    _: None = Depends(guard),
+):
+    """异步生成：立即返回 task_id，前端轮询 /api/tasks/{id} 获取进度。"""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+
+    data = await file.read()
+    cfg = _build_cfg(tile_w=tile_w, tile_d=tile_d, base=base, relief=relief, target_tris=target_tris)
+    task_id = _submit_task(data, mode, model, cfg)
     return JSONResponse({"task_id": task_id})
+
+
+@app.post("/api/batch")
+async def batch_generate(
+    files: list[UploadFile] = File(...),
+    mode: str = Form("relief"),
+    model: str = Form(""),
+    _: None = Depends(guard),
+):
+    """批量生成：多张图片 -> 各自一个异步任务，返回 task_id 列表。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="请至少上传一个文件")
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="单次批量上限 50 个")
+    cfg = _build_cfg()
+    tids = []
+    for f in files:
+        data = await f.read()
+        tids.append(_submit_task(data, mode, model, cfg))
+    return JSONResponse({"count": len(tids), "task_ids": tids})
 
 
 @app.get("/api/tasks/{task_id}")
@@ -190,8 +242,14 @@ def task_status(task_id: str):
         return JSONResponse(dict(t))
 
 
-# 静态下载生成的文件
-app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
+@app.get("/api/models")
+def list_models():
+    """列出模型动物园；标注本机是否已具备权重（models/ 下对应目录存在）。"""
+    out = []
+    for m in MODEL_ZOO:
+        present = _local_weights_present(DEFAULT_CONFIG, m["weights"])
+        out.append({**m, "available": bool(present or m["available"])})
+    return JSONResponse({"models": out})
 
 
 @app.post("/api/analyze")
@@ -199,6 +257,7 @@ async def analyze_endpoint(
     file: UploadFile = File(...),
     mode: str = Form("relief"),
     printer: str = Form(""),
+    _: None = Depends(guard),
 ):
     """可打印性 / 支撑建议分析。
 
@@ -219,6 +278,10 @@ async def analyze_endpoint(
     except Exception as e:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"分析失败: {e}")
     return JSONResponse(rec)
+
+
+# 静态下载生成的文件
+app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
 
 
 if __name__ == "__main__":

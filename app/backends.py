@@ -12,6 +12,8 @@ import numpy as np
 import trimesh
 from PIL import Image
 
+from .config import resolve_model
+
 
 def _cuda_available() -> bool:
     try:
@@ -139,8 +141,9 @@ class HunyuanBackend(Backend):
     """Hunyuan3D-2 适配层（需自备 GPU + 权重，见 docs/部署.md）。"""
     name = "hunyuan3d"
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, weights_dir: str = "Hunyuan3D-2"):
         self.cfg = cfg
+        self.weights_dir = weights_dir
         self._model = None
 
     def _load(self):
@@ -155,7 +158,7 @@ class HunyuanBackend(Backend):
                 "  3) 权重会自动从 HuggingFace 拉取，或放到 models/Hunyuan3D-2\n"
                 "详见 docs/部署.md"
             ) from e
-        local = os.path.join(self.cfg.model_dir, "Hunyuan3D-2")
+        local = os.path.join(self.cfg.model_dir, self.weights_dir)
         source = local if os.path.isdir(local) else "tencent/Hunyuan3D-2"
         self._model = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(source)
 
@@ -171,13 +174,14 @@ class TripoSRBackend(Backend):
     """TripoSR 适配层（轻量快速，需自备 GPU + 权重，见 docs/部署.md）。"""
     name = "triposr"
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, weights_dir: str = "TripoSR"):
         self.cfg = cfg
+        self.weights_dir = weights_dir
         self._model = None
 
     def _load(self):
         import sys
-        repo = os.path.join(self.cfg.model_dir, "TripoSR")
+        repo = os.path.join(self.cfg.model_dir, self.weights_dir)
         if os.path.isdir(repo):
             sys.path.insert(0, repo)
         try:
@@ -212,12 +216,13 @@ class TripoSRBackend(Backend):
         return _to_trimesh(out[0] if isinstance(out, (list, tuple)) else out)
 
 
-def get_backend(mode: str, cfg):
+def get_backend(mode: str, cfg, model_id: str = ""):
     mode = (mode or "relief").lower()
     if mode in ("relief", "offline", "浮雕"):
         return ReliefBackend(cfg)
-    if mode in ("hunyuan3d", "hunyuan", "ai"):
-        return HunyuanBackend(cfg)
-    if mode in ("triposr", "tripo"):
-        return TripoSRBackend(cfg)
-    raise ValueError(f"未知模式: {mode}")
+    # AI 模式：若有 model_id（垂类动物园），按权重目录选择；否则按 mode 选默认权重
+    backend_name, weights_dir, _domain = resolve_model(model_id) if model_id else (None, None, None)
+    if mode in ("triposr", "tripo") or backend_name == "triposr":
+        return TripoSRBackend(cfg, weights_dir or "TripoSR")
+    # 默认 / hunyuan / 垂类（均为 hunyuan3d 底座）
+    return HunyuanBackend(cfg, weights_dir or "Hunyuan3D-2")

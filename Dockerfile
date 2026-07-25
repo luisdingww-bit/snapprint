@@ -17,9 +17,6 @@ COPY app ./app
 COPY web ./web
 COPY scripts ./scripts
 
-# 数据与上传文件用卷持久化（见 docker-compose.yml）
-VOLUME ["/app/data", "/app/outputs"]
-
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

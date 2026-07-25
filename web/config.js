@@ -7,9 +7,8 @@
 //   - 填具体地址   → 前端部署在静态托管（Surge / CloudStudio），后端跑在别处。
 //                    例如："https://snapprint-api.your-host.com"
 //
-// 注意：静态托管本身跑不了 Python 后端，所以画廊/上传/评论等需要后端的
-// 功能在「前端与后端不同源」且后端未启动时会出现「后端未连接」提示，
-// 此时按提示启动后端即可。
+// 当前配置：前端托管在 CloudStudio 静态页，后端跑在 Railway。
+// 已在本仓库部署（见 app/main.py 的 CORS 白名单放行此 CloudStudio 域名）。
 window.SNAPRINT_CONFIG = {
-  API_BASE: "",
+  API_BASE: "https://snapprint-production.up.railway.app",
 };

@@ -17,8 +17,8 @@ COPY app ./app
 COPY web ./web
 COPY scripts ./scripts
 
-# 数据与上传文件用卷持久化（见 docker-compose.yml）
-VOLUME ["/app/data", "/app/outputs"]
+# 数据与上传文件持久化：本地用 docker-compose.yml 挂卷；Railway 用 Railway Volumes。
+# 注意：Railway 构建器不支持 Dockerfile 的 VOLUME 指令，所以不在镜像里声明卷。
 
 EXPOSE 8000
 

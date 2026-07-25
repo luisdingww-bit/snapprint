@@ -40,16 +40,10 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.6.0")
 
 # 允许跨域：鉴权走请求头 X-API-Key（而非 Cookie），故无需 allow_credentials；
-# origins 默认锁定为「公开 Demo + 本地地址」，可用 SNAPRINT_CORS_ORIGINS
-# 以逗号分隔覆盖（内网/小团队部署时建议显式列出可信前端来源）。
-_CORS_DEFAULTS = [
-    "https://snapprint-3d.surge.sh",
-    "https://e987b12ce3c541599e63f76bfc9fc8cf.app.codebuddy.work",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# 社区为公开服务，默认允许所有来源（"*"），这样前端无论托管在 CloudStudio /
+# Surge / 用户自有域名都能直接连后端，无需逐个加白名单。
+# 如需收紧，用 SNAPRINT_CORS_ORIGINS 以逗号分隔显式列出可信前端来源即可覆盖。
+_CORS_DEFAULTS = ["*"]
 _cors_env = os.environ.get("SNAPRINT_CORS_ORIGINS", "").strip()
 CORS_ORIGINS = [o for o in _cors_env.split(",") if o.strip()] or _CORS_DEFAULTS
 app.add_middleware(

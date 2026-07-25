@@ -17,6 +17,15 @@
 - **`docs/部署.md` 新增「第七节 Railway 免费托管」**：部署步骤、ephemeral 存储限制
   与 Volume 持久化方案。
 
+### 变更
+- **依赖精简（提升 Railway 构建成功率）**：`requirements.txt` 由 `trimesh[easy]` 改为
+  纯核心 `trimesh`，移除未使用的 `Pillow`。STL/OBJ/PLY/3MF/GLB/GLTF/OFF 加载与几何
+  分析均为 trimesh 内置能力，无需 `[easy]` 额外轮子；原配置会拖入 scipy/rtree/
+  shapely/lxml 等用不到的重依赖，在部分构建环境易致安装缓慢或失败。已在全新环境实测
+  验证（trimesh 4.12.2，uvicorn 真实进程跑通上传/分析/画廊/评论全链路）。
+- **新增 `Procfile`**：`web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`，
+  作为 railway.json startCommand 的双保险，避免个别构建器忽略配置文件启动命令。
+
 ## [0.6.0] - 2026-07-25 · 社区版重构（聚焦实质）
 
 > 产品转向：砍掉繁杂的「图生 3D 多模式 / 模型动物园 / 批量 / Blender/ComfyUI 集成」，

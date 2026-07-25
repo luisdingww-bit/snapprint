@@ -1,8 +1,9 @@
+# SnapPrint 社区版运行依赖（已精简，仅保留真正用到的，构建更快更稳）
 fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 numpy>=1.24
-Pillow>=10.0
-trimesh[easy]>=4.0
-# 可选：AI 模式大幅减面更快、质量更好（离线浮雕模式不需要）
-# open3d>=0.17
+# 仅核心 trimesh（STL/OBJ/PLY/3MF/GLB/GLTF/OFF 加载与几何分析均为内置能力，
+# 无需 [easy] 额外轮子；[easy] 会拖入 scipy/rtree/shapely/lxml 等用不到的重依赖，
+# 在 Railway 等构建环境易导致安装缓慢或失败）。
+trimesh>=4.0

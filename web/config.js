@@ -7,8 +7,8 @@
 //   - 填具体地址   → 前端部署在静态托管（Surge / CloudStudio），后端跑在别处。
 //                    例如："https://snapprint-api.your-host.com"
 //
-// 当前配置：前端托管在 CloudStudio 静态页，后端跑在 Railway。
-// 已在本仓库部署（见 app/main.py 的 CORS 白名单放行此 CloudStudio 域名）。
+// 当前配置：前端托管在 Surge（snapprint-3d.surge.sh），后端跑在 Railway。
+// 后端 app/main.py 已默认允许所有跨域来源（*），无需逐个加白名单。
 window.SNAPRINT_CONFIG = {
   API_BASE: "https://snapprint-production.up.railway.app",
 };

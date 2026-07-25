@@ -14,14 +14,31 @@ const fmtTime = (ts) =>
 const scoreClass = (s) => (s >= 80 ? "score-ok" : s >= 60 ? "score-mid" : "score-bad");
 const scoreColor = (s) => (s >= 80 ? "var(--accent-2)" : s >= 60 ? "var(--warn)" : "var(--bad)");
 
+const API_BASE = (window.SNAPRINT_CONFIG && window.SNAPRINT_CONFIG.API_BASE) || "";
+
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  const r = await fetch(API_BASE + path, opts);
   if (!r.ok) {
     let detail = "请求失败";
     try { detail = (await r.json()).detail || detail; } catch {}
     throw new Error(detail);
   }
   return r.json();
+}
+
+// 探测后端是否在线；离线时显示提示横幅
+async function checkBackend() {
+  const banner = $("#backendBanner");
+  if (!banner) return;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const r = await fetch(API_BASE + "/api/health", { signal: ctrl.signal });
+    clearTimeout(t);
+    banner.style.display = r.ok ? "none" : "block";
+  } catch {
+    banner.style.display = "block";
+  }
 }
 
 // ---------- 报告渲染 ----------
@@ -73,7 +90,7 @@ function buildReport(rec, sub) {
   }
 
   const dl = sub
-    ? `<a class="btn" href="/outputs/uploads/${esc(sub.id)}${esc(sub.ext)}" download>下载模型原文件</a>`
+    ? `<a class="btn" href="${API_BASE}/outputs/uploads/${esc(sub.id)}${esc(sub.ext)}" download>下载模型原文件</a>`
     : "";
 
   return `
@@ -246,10 +263,15 @@ async function submitUpload() {
   $("#detail").addEventListener("click", (e) => {
     if (e.target.id === "detail") $("#detail").classList.add("hidden");
   });
+  await checkBackend();
   try {
     await setupPresets();
+  } catch (e) {
+    /* 后端离线时预设加载失败无关紧要，横幅已提示 */
+  }
+  try {
     await loadGallery();
   } catch (e) {
-    $("#galleryEmpty").textContent = "加载失败：" + e.message;
+    $("#galleryEmpty").textContent = "社区后端未连接，画廊暂不可用。";
   }
 })();

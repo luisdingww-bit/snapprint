@@ -22,6 +22,14 @@
   </header>
 
   <main>
+    <!-- 后端离线提示（默认隐藏，前端探测到后端不可达时显示） -->
+    <div id="backendBanner" class="banner" style="display:none">
+      ⚠️ 社区后端未连接：画廊 / 上传 / 评论需要 Python 后端。
+      在本地运行 <code>python -m app.main</code> 后访问
+      <code>http://localhost:8000</code>；或部署后端到 Python 主机后，
+      在 <code>web/config.js</code> 把 <code>API_BASE</code> 改成后端地址。
+    </div>
+
     <!-- 上传 + 分析 -->
     <section id="upload" class="card">
       <h2>上传你的模型</h2>
@@ -75,6 +83,7 @@
     SnapPrint 咔印3D · 社区版 — 让 3D 打印的「最后一公里」人人可验证
   </footer>
 
+  <script src="/config.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

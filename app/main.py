@@ -185,6 +185,12 @@ def scoreboard(limit: int = 12, _: None = Depends(guard)):
     return JSONResponse({"items": ranked})
 
 
+@app.get("/api/health")
+def health():
+    """健康检查（无需鉴权），供前端探测后端在线状态 / Docker 健康检查。"""
+    return JSONResponse({"ok": True, "version": "0.6.0"})
+
+
 # 静态下载上传的模型原文件（注册在前，优先级高于根 "/" 挂载）
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
 
@@ -195,4 +201,4 @@ app.mount("/", StaticFiles(directory=str(WEB), html=True), name="web")
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))

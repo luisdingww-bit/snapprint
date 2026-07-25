@@ -1,11 +1,18 @@
 services:
   snapprint:
     build: .
-    image: snapprint:latest
     container_name: snapprint
     ports:
       - "8000:8000"
+    environment:
+      # 可选：设置后所有 /api/* 需携带请求头 X-API-Key（内网/公网部署建议开启）
+      # SNAPRINT_API_KEY: "换成你自己的强密码"
+      # 可选：每客户端每分钟请求上限（0 = 不限）
+      SNAPRINT_RATE_LIMIT: "0"
+      # 可选：允许跨域的前端来源（逗号分隔）；默认已含 snapprint-3d.surge.sh
+      # SNAPRINT_CORS_ORIGINS: "https://snapprint-3d.surge.sh,https://你的前端域名"
     volumes:
-      - ./models:/app/models      # 放置 AI 模式权重（离线浮雕不需要）
-      - ./outputs:/app/outputs    # 生成的 3D 文件
+      # 数据库 + 上传的模型文件持久化，容器重建不丢数据
+      - ./data:/app/data
+      - ./uploads:/app/outputs/uploads
     restart: unless-stopped

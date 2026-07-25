@@ -3,7 +3,7 @@
 > 上传你自己的 3D 模型，系统自动分析「它能不能打」，并分享到社区画廊让成员一起看。
 > 开源 · 中文友好 · Apache-2.0 商用友好。
 
-**🌐 在线社区 Demo：<https://snapprint-3d.surge.sh>**
+**🌐 在线 UI 预览（前端）：<https://e987b12ce3c541599e63f76bfc9fc8cf.app.codebuddy.work>** —— 完整社区功能需启动后端（见下方「部署 / 安全」），或本地 `python -m app.main`。
 
 ---
 

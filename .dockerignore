@@ -1,0 +1,16 @@
+# 不进镜像的内容
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+data/
+outputs/
+*.db
+.pytestdeps/
+requirements.lock.txt
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.md
+tests/

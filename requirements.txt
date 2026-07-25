@@ -3,6 +3,11 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
 numpy>=1.24
+# 图生3D 浮雕模式用 PIL 解码图片；AI 模式（Hunyuan3D/TripoSR 等）需自备 GPU+权重
+Pillow>=10.0
+# trimesh 的水密修复 / 摆正等后处理需要 scipy + networkx（不引 [easy] 的 rtree/shapely/lxml 重依赖）
+scipy>=1.10
+networkx>=3.0
 # 仅核心 trimesh（STL/OBJ/PLY/3MF/GLB/GLTF/OFF 加载与几何分析均为内置能力，
 # 无需 [easy] 额外轮子；[easy] 会拖入 scipy/rtree/shapely/lxml 等用不到的重依赖，
 # 在 Railway 等构建环境易导致安装缓慢或失败）。

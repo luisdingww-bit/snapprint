@@ -255,9 +255,98 @@ async function submitUpload() {
   }
 }
 
+// ---------- 照片生成 3D ----------
+let genPickedFile = null;
+async function setupGenerate() {
+  const dz = $("#genDropzone");
+  const input = $("#genFile");
+  dz.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    genPickedFile = input.files[0];
+    $("#genFileName").textContent = genPickedFile ? genPickedFile.name : "未选择文件";
+    $("#genSubmit").disabled = !genPickedFile;
+  });
+  ["dragover", "dragenter"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); })
+  );
+  dz.addEventListener("drop", (e) => {
+    genPickedFile = e.dataTransfer.files[0];
+    if (genPickedFile) {
+      $("#genFileName").textContent = genPickedFile.name;
+      $("#genSubmit").disabled = false;
+    }
+  });
+
+  // 模式下拉：默认 relief（永远可用），其余来自模型动物园
+  try {
+    const { models } = await api("/api/models");
+    const sel = $("#genMode");
+    models.forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m.id || m.backend;
+      const tag = m.available ? "" : "（需 GPU+权重）";
+      o.textContent = `${m.name}${tag}`;
+      sel.appendChild(o);
+    });
+  } catch (e) {
+    /* 后端离线时下拉仅保留默认浮雕项，无伤大雅 */
+  }
+
+  // 复用上传区的打印机/材料预设
+  try {
+    const { printers, materials } = await api("/api/presets");
+    const ps = $("#genPrinter"), ms = $("#genMaterial");
+    printers.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name; ps.appendChild(o);
+    });
+    materials.forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m.id; o.textContent = m.name; ms.appendChild(o);
+    });
+  } catch (e) { /* ignore */ }
+
+  $("#genSubmit").addEventListener("click", submitGenerate);
+}
+
+async function submitGenerate() {
+  if (!genPickedFile) return;
+  const btn = $("#genSubmit");
+  btn.disabled = true;
+  $("#genMsg").className = "msg";
+  $("#genMsg").textContent = "生成中…（浮雕模式秒级，AI 模式可能较慢）";
+  const fd = new FormData();
+  fd.append("file", genPickedFile);
+  fd.append("mode", $("#genMode").value);
+  const author = $("#genAuthor").value.trim();
+  const printer = $("#genPrinter").value;
+  const material = $("#genMaterial").value;
+  if (author) fd.append("author", author);
+  if (printer) fd.append("printer", printer);
+  if (material) fd.append("material", material);
+  try {
+    const res = await api("/api/generate", { method: "POST", body: fd });
+    $("#genResult").innerHTML = `<div class="report-head"><h3>生成完成 · 已发布到社区（${esc(res.mode)}）</h3></div>
+      <div class="report">${buildReport(res.report, { id: res.id, ext: ".stl" })}</div>`;
+    $("#genMsg").className = "msg ok";
+    $("#genMsg").textContent = "✓ 已加入社区画廊，下方可看到你的模型。";
+    genPickedFile = null; $("#genFile").value = ""; $("#genFileName").textContent = "未选择文件";
+    await loadGallery();
+  } catch (e) {
+    $("#genMsg").className = "msg err";
+    $("#genMsg").textContent = "✕ " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- 初始化 ----------
 (async function init() {
   setupDropzone();
+  setupGenerate();
   $("#submit").addEventListener("click", submitUpload);
   $("#detailClose").addEventListener("click", () => $("#detail").classList.add("hidden"));
   $("#detail").addEventListener("click", (e) => {

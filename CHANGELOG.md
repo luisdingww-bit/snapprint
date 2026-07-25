@@ -3,6 +3,35 @@
 所有 notable 变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 2026-07-25 · 补回图生 3D（照片生成）
+
+> 把社区版 v0.6.0 砍掉的「图生 3D」能力补回，但聚焦保留真正有用的部分：
+> 离线浮雕（零依赖、保水密、可打）+ AI 模式适配层（缺权重优雅报错），并让它
+> 生成即分析、进社区画廊。社区主线（上传/画廊/评论）完全不动。
+
+### 新增
+- **图生 3D 编排 `app/pipeline.py`**：照片 → 网格 → 后处理，复用原 `af389ee` 实现。
+- **AI 后端适配层 `app/backends.py`**：Hunyuan3D / TripoSR / SF3D / Trellis 适配，
+  缺依赖/权重时返回清晰指引，不静默失败。
+- **配置 + 模型动物园 `app/config.py`**：`MODEL_ZOO`（后端清单 + 速度/贴图标签，
+  本机权重可用性探测）。
+- **`POST /api/generate`**：照片 → 可打印 3D。
+  - `mode=relief`（默认）：离线浮雕，纯 numpy/Pillow/trimesh，任何环境秒级出网格。
+  - `mode=ai` / 指定 `model`：走 AI 后端，需自备 GPU + 权重，否则返回明确指引。
+  - 生成的网格自动做可打印性分析并发布到社区画廊（与上传模型同报告链路）。
+- **`GET /api/models`**：模型动物园列表 + 本机权重可用性探测，前端「照片生成」面板用。
+- **前端「照片生成」面板**（`web/index.html` + `web/app.js`）：图片选择 + 模式选择 +
+  生成 + 复用报告渲染与下载；nav 增加「照片生成」入口；社区页面不被覆盖。
+
+### 变更
+- **依赖补回**：`requirements.txt` 加回 `Pillow>=10.0`、`scipy>=1.10`、`networkx>=3.0`
+  （trimesh 的后处理需 scipy/networkx；刻意不引 `[easy]` 的 rtree/shapely/lxml 重依赖）。
+- 版本号 `0.6.0` → `0.7.0`，路由文档注释与 `/api/health` 同步更新。
+
+### 说明
+- 浮雕模式零依赖可跑（无需显卡/权重）；AI 模式需自备 GPU + 权重，缺失时返回指引。
+- 仅补生成能力，Surge 落地页（链接跳转 Railway 上传）与社区 API 均不受影响。
+
 ## [0.6.1] - 2026-07-25 · Railway 一键部署支持
 
 > 让 SnapPrint 社区版零服务器运维上线：内置 Railway 配置，从 GitHub 一键部署，

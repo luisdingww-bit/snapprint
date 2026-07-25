@@ -16,12 +16,46 @@
       </div>
     </div>
     <nav class="nav-links">
+      <a href="#generate">照片生成 3D</a>
       <a href="#upload">上传分析</a>
       <a href="#gallery">社区画廊</a>
     </nav>
   </header>
 
   <main>
+    <!-- 照片 → 可打印 3D 生成 -->
+    <section id="generate" class="card">
+      <h2>📷 照片生成 3D 模型</h2>
+      <p class="muted">上传一张照片，自动生成可打印的 3D 浮雕（离线、秒级），并给出可打印性分析。也可选 AI 模式（需自备 GPU + 权重）。</p>
+
+      <div id="genDropzone" class="dropzone">
+        <input type="file" id="genFile" accept="image/*" hidden />
+        <div class="dz-inner">
+          <div class="dz-icon">🖼️</div>
+          <div>把照片拖到这里，或 <span class="link">点击选择</span></div>
+          <div class="muted small" id="genFileName">未选择文件</div>
+        </div>
+      </div>
+
+      <div class="meta-row">
+        <label>生成模式
+          <select id="genMode"><option value="relief">离线浮雕（默认·秒级）</option></select>
+        </label>
+        <label>昵称<input type="text" id="genAuthor" placeholder="匿名" maxlength="24" /></label>
+        <label>打印机
+          <select id="genPrinter"><option value="">不指定</option></select>
+        </label>
+        <label>材料
+          <select id="genMaterial"><option value="">不指定</option></select>
+        </label>
+      </div>
+
+      <button id="genSubmit" class="btn primary" disabled>生成并发布到社区</button>
+      <div id="genMsg" class="msg"></div>
+
+      <div id="genResult"></div>
+    </section>
+
     <!-- 后端离线提示（默认隐藏，前端探测到后端不可达时显示） -->
     <div id="backendBanner" class="banner" style="display:none">
       ⚠️ 社区后端未连接：画廊 / 上传 / 评论需要 Python 后端。

@@ -4,6 +4,8 @@
 
 路由：
   POST /api/upload                上传模型文件 + 自动分析，进入画廊
+  POST /api/generate              照片 → 可打印 3D（离线浮雕 / AI 模式），分析后入画廊
+  GET  /api/models                模型动物园（生成后端列表 + 本机权重可用性）
   GET  /api/gallery               画廊列表（分页，按时间倒序）
   GET  /api/models/{id}           模型详情 = 分析报告 + 评论
   POST /api/models/{id}/comments  发表评论
@@ -37,7 +39,7 @@ OUTPUTS = ROOT / "outputs"
 UPLOADS = OUTPUTS / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.6.0")
+app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.7.0")
 
 # 允许跨域：鉴权走请求头 X-API-Key（而非 Cookie），故无需 allow_credentials；
 # 社区为公开服务，默认允许所有来源（"*"），这样前端无论托管在 CloudStudio /
@@ -132,6 +134,124 @@ async def upload(
     return JSONResponse({"id": sid, "report": rec, "score": rec.get("score", 0)})
 
 
+# ---------------------------------------------------------------------------
+# 照片 → 可打印 3D（图生3D）：离线浮雕（零依赖，保证可跑）+ AI 模式适配层
+# （Hunyuan3D / TripoSR 等需自备 GPU + 权重，缺失时返回清晰指引）。
+# 生成出的网格复用 advisor 做可打印性分析，并进入社区画廊。
+# ---------------------------------------------------------------------------
+@app.post("/api/generate")
+async def generate(
+    file: UploadFile = File(...),
+    mode: str = Form("relief"),
+    model: str = Form(""),
+    author: str = Form(""),
+    printer: str = Form(""),
+    material: str = Form(""),
+    _: None = Depends(guard),
+):
+    """照片 → 可打印 3D 模型。
+
+    - mode=relief（默认）：离线浮雕，纯 numpy/Pillow/trimesh，任何环境秒级出结果。
+    - mode=ai / 指定 model：走 AI 后端（Hunyuan3D 等），需自备 GPU + 权重，
+      否则会返回明确的「缺少依赖/权重」指引，不会静默失败。
+    生成的网格会自动做可打印性分析并发布到社区画廊。
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"文件过大，上限 {MAX_UPLOAD_MB} MB")
+
+    # 校验图片有效性（避免把非图片喂给生成管线）
+    try:
+        from io import BytesIO
+        from PIL import Image
+
+        Image.open(BytesIO(data)).verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="请上传有效的图片（jpg / png / webp 等）")
+
+    try:
+        from .pipeline import run
+
+        result = run(data, mode=mode, model=model)
+        mesh = result["mesh"]
+    except Exception as e:  # 生成失败（含 AI 模式缺依赖/权重）：明确回传原因
+        raise HTTPException(status_code=500, detail=f"生成失败: {e}")
+
+    # 导出为 .stl 字节，复用 advisor 分析链路（与上传模型一致的报告）
+    import io as _io
+
+    stl_buf = _io.BytesIO()
+    try:
+        mesh.export(stl_buf, file_type="stl")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出失败: {e}")
+    stl_bytes = stl_buf.getvalue()
+
+    try:
+        rec = advisor.analyze_upload(
+            stl_bytes, filename="generated.stl", printer=printer, material=material
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析失败: {e}")
+
+    # 落盘：.stl 为通用可打印下载；另存 .obj（带顶点色）便于带色彩查看
+    sid = uuid.uuid4().hex[:12]
+    stem = (file.filename.rsplit(".", 1)[0] if "." in file.filename else "photo")
+    stl_path = UPLOADS / f"{sid}.stl"
+    stl_path.write_bytes(stl_bytes)
+    try:
+        mesh.export(UPLOADS / f"{sid}.obj")
+    except Exception:
+        pass
+    db.add_submission(
+        sid=sid,
+        filename=f"{stem}_3d.stl",
+        author=author,
+        ext=".stl",
+        size_bytes=len(stl_bytes),
+        model_path=str(stl_path),
+        report=rec,
+    )
+    return JSONResponse(
+        {
+            "id": sid,
+            "mode": result.get("mode", mode),
+            "report": rec,
+            "score": rec.get("score", 0),
+        }
+    )
+
+
+@app.get("/api/models")
+def list_models(_: None = Depends(guard)):
+    """模型动物园：列出可用生成后端（含本机权重可用性探测 + 速度/贴图标签）。
+
+    前端用于「照片生成 3D」面板的模式选择；relief 永远可用，
+    AI 模式需自备 GPU + 权重（available=false 时生成会返回指引）。
+    """
+    try:
+        from .config import DEFAULT_CONFIG, MODEL_ZOO
+
+        items = []
+        for m in MODEL_ZOO:
+            entry = dict(m)
+            # 本机是否具备权重：探测 <model_dir>/<weights> 目录
+            try:
+                import os
+
+                wd = os.path.join(getattr(DEFAULT_CONFIG, "model_dir", "models"), m["weights"])
+                entry["available"] = os.path.isdir(wd)
+            except Exception:
+                entry["available"] = bool(m.get("available", False))
+            items.append(entry)
+        return JSONResponse({"models": items})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"模型列表失败: {e}")
+
+
 @app.get("/api/gallery")
 def gallery(limit: int = 24, offset: int = 0, _: None = Depends(guard)):
     """画廊列表（分页，按时间倒序）。"""
@@ -183,7 +303,7 @@ def scoreboard(limit: int = 12, _: None = Depends(guard)):
 @app.get("/api/health")
 def health():
     """健康检查（无需鉴权），供前端探测后端在线状态 / Docker 健康检查。"""
-    return JSONResponse({"ok": True, "version": "0.6.0"})
+    return JSONResponse({"ok": True, "version": "0.7.0"})
 
 
 # 静态下载上传的模型原文件（注册在前，优先级高于根 "/" 挂载）

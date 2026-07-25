@@ -22,6 +22,7 @@
 ## 功能
 
 - 📤 **上传即分析**：拖入 `.stl / .obj / .ply / .3mf / .glb / .gltf / .off`，秒级出报告
+- 🖼️ **照片生成 3D**：上传照片 → 离线浮雕（零依赖秒出、水密可打）或 AI 模式（Hunyuan3D 等需自备 GPU+权重），生成即分析并入画廊
 - 🩺 **可打印性报告**：水密性、悬垂占比、接触面、尺寸、体积、层高、填充、支撑建议、Brim、预估重量与时长
 - 🏅 **可打印性评分 0–100**：一眼看出模型「省不省心」
 - 🖼️ **社区画廊**：所有模型按时间倒序，卡片展示评分 / 尺寸 / 作者
@@ -58,6 +59,8 @@ python -m app.main
 | 接口 | 说明 |
 |---|---|
 | `POST /api/upload` | 上传模型文件 + 自动分析，进入画廊 |
+| `POST /api/generate` | 照片 → 可打印 3D（离线浮雕 / AI 模式），分析后入画廊 |
+| `GET  /api/models` | 模型动物园：生成后端列表 + 本机权重可用性探测 |
 | `GET  /api/gallery` | 画廊列表（分页 `?limit=&offset=`） |
 | `GET  /api/models/{id}` | 模型详情 = 分析报告 + 评论 |
 | `POST /api/models/{id}/comments` | 发表评论（`author`、`body`） |
@@ -65,7 +68,12 @@ python -m app.main
 | `GET  /api/scoreboard` | 可打印性评分排行榜 |
 
 `POST /api/upload` 表单字段：`file`（必填）、`author`、`printer`、`material`。
+`POST /api/generate` 表单字段：`file`（图片，必填）、`mode`（`relief` 默认 / `ai`）、`model`（AI 后端名）、`author`、`printer`、`material`。
 分析返回 JSON 含 `score` 与完整 `report` 字段（详见 `app/advisor.py`）。
+
+> **照片生成 3D**：`mode=relief` 为离线浮雕，纯 numpy/Pillow/trimesh，任何环境秒级出
+> 水密可打网格；`mode=ai` 走 AI 后端（Hunyuan3D 等），需自备 GPU + 权重，缺失时返回
+> 明确指引，不会静默失败。生成的网格自动复用分析链路并发布到社区画廊。
 
 ## 部署与安全
 
@@ -85,6 +93,9 @@ snapprint/
 ├── app/
 │   ├── main.py          # FastAPI 后端（托管 web/ 静态前端 + 社区 API）
 │   ├── advisor.py       # 可打印性 / 支撑建议分析 + 评分（核心引擎）
+│   ├── pipeline.py      # 图生3D 编排：图片 → 网格 → 后处理
+│   ├── backends.py      # AI 后端适配层（Hunyuan3D/TripoSR/SF3D/Trellis，缺依赖优雅报错）
+│   ├── config.py        # 配置 + 模型动物园 MODEL_ZOO
 │   ├── postprocess.py   # 网格后处理工具（水密/缩放/统计）
 │   └── db.py            # 社区数据层（零依赖 SQLite：模型 + 评论）
 ├── web/                 # 简洁单页前端：上传 → 画廊 → 详情 → 评论

@@ -3,6 +3,36 @@
 所有 notable 变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-07-25 · 社区版重构（聚焦实质）
+
+> 产品转向：砍掉繁杂的「图生 3D 多模式 / 模型动物园 / 批量 / Blender/ComfyUI 集成」，
+> 主线收敛为「用户上传自己的模型 → 系统自动可打印性分析 → 社区画廊 → 成员评论」。
+> 分析引擎（advisor）已是现成能力，本次把它扶正为主角，并套上社区层。
+
+### 新增（社区）
+- **社区数据层 `app/db.py`**：零依赖 SQLite，存储模型提交（含分析报告）与评论；
+  画廊列表带评论计数，支持分页与评分榜。
+- **社区 API**：`POST /api/upload`（上传即分析）、`GET /api/gallery`、
+  `GET /api/models/{id}`（报告+评论）、`POST /api/models/{id}/comments`（评论）、
+  `GET /api/presets`、`GET /api/scoreboard`。
+- **可打印性评分 `advisor.score()`**：0–100 综合评分（水密 / 悬垂 / 支撑 / 接触面），
+  画廊与详情页直观展示。
+- **简洁前端 `web/`**：上传区 + 画廊网格 + 详情（报告可视化）+ 评论，单页三项文件
+  （index.html / app.js / style.css），移除原 5 模式散文件。
+
+### 移除（精简聚焦）
+- 删除图生 3D 浮雕流水线 `app/pipeline.py`、AI 后端适配层 `app/backends.py`、
+  配置/模型动物园 `app/config.py`（含 `MODEL_ZOO`）。
+- 删除多模式接口 `generate` / `generate_async` / `batch` / `models` 及对应任务队列。
+- 删除失效集成 `blender/`、`comfyui/`、`examples/`、`scripts/setup_ai_models.py`、
+  `requirements-ai.txt`、过时 `docs/路线图.md`、`README.en.md`。
+- 移除异步任务队列（`SNAPRINT_TASK_PERSIST` 一并失效，因上传分析为同步秒级）。
+
+### 保留 / 沿用
+- 分析引擎 `app/advisor.py`（去掉图片→浮雕分支，只收网格文件，加 `material` 预估与 `score`）。
+- v0.5.0 的 CORS 收紧与可选 API Key / 限流（移至社区 API）。
+- `requirements.lock.txt`（重新生成，仅含运行时依赖）。
+
 ## [0.5.0] - 2026-07-25 · 工程加固（本评估优化）
 
 > 本次为「整合优化」版本：在 v0.5 功能完整的基础上，修复配置/健壮性短板，

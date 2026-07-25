@@ -199,46 +199,75 @@ def estimate(rec: dict, mat: dict) -> dict:
     return {"grams": round(grams, 1), "minutes": round(minutes, 1)}
 
 
+# 社区主线只接受用户「自己已有的模型」文件；图片→浮雕生成已不再是主线。
+SUPPORTED_EXT = (".stl", ".obj", ".ply", ".3mf", ".glb", ".gltf", ".off")
+
+
 def analyze_upload(
     data: bytes,
     *,
-    mode: str = "relief",
     filename: str = "",
     printer: str = "",
+    material: str = "",
     content_type: str = "",
 ) -> dict:
-    """从上传的字节（图片或网格文件）得到建议 dict。
+    """从上传的模型文件字节得到可打印性建议 dict。
 
-    - 图片：走 pipeline 生成（默认浮雕）→ 拿网格
-    - 网格文件（stl/obj/ply/3mf）：trimesh 直接加载
+    仅接受网格文件（stl/obj/ply/3mf/glb/gltf/off）。图片→浮雕的图生 3D
+    能力已不再是 SnapPrint 社区版的主线；这里聚焦「上传已有模型 → 分析」。
     """
-    mesh: "trimesh.Trimesh | None" = None
-    if content_type.startswith("image/") or filename.lower().endswith(
-        (".png", ".jpg", ".jpeg", ".webp", ".bmp")
-    ):
-        from .pipeline import run
-        from .config import SnapConfig
+    import io
 
-        result = run(data, mode=mode, cfg=SnapConfig(), out_dir=None)
-        mesh = result["mesh"]
-    else:
-        import io
+    ext = ""
+    low = filename.lower()
+    for e in SUPPORTED_EXT:
+        if low.endswith(e):
+            ext = e[1:]
+            break
+    if not ext:
+        raise ValueError(
+            "不支持的文件格式，请上传 .stl / .obj / .ply / .3mf / .glb / .gltf / .off"
+        )
 
-        ext = ""
-        for e in (".stl", ".obj", ".ply", ".3mf", ".glb", ".off"):
-            if filename.lower().endswith(e):
-                ext = e[1:]
-                break
+    try:
         mesh = trimesh.load(io.BytesIO(data), file_type=ext or None, force="mesh")
+    except Exception as e:  # pragma: no cover - 无法解析的文件
+        raise ValueError(f"无法解析模型文件: {e}")
 
-    rec = analyze(mesh, mode)
+    if mesh is None or getattr(mesh, "is_empty", True):
+        raise ValueError("模型文件为空或无法解析")
+
+    rec = analyze(mesh, "import")
 
     if printer:
         p = _by_id(PRINTERS, printer)
         ft = fit(rec, p)
         if not ft["ok"]:
             rec.setdefault("warnings", []).append(
-                f"模型超出热床 {p['bed']} mm，请缩放或旋转后再切片"
+                f"模型超出热床 {p['name']}（{p['bed']} mm），请缩放或旋转后再切片"
             )
-        rec["_printer"] = p["id"]
+        rec["printer"] = {"id": p["id"], "name": p["name"], "fit": ft["ok"]}
+
+    if material:
+        m = _by_id(MATERIALS, material)
+        rec["material"] = {"id": m["id"], "name": m["name"]}
+        rec.update(estimate(rec, m))
+
+    rec["score"] = score(rec)
     return rec
+
+
+def score(rec: dict) -> int:
+    """可打印性综合评分 0-100（越高越省心）。
+
+    权重：水密性(基础) > 悬垂占比 > 是否需支撑 > 贴床接触。
+    """
+    s = 100
+    if not rec.get("watertight"):
+        s -= 35
+    s -= min(30, rec.get("overhang_ratio", 0) * 100 * 0.8)
+    if rec.get("supports"):
+        s -= 10
+    if rec.get("contact_ratio", 1.0) < 0.1:
+        s -= 10
+    return int(max(0, min(100, round(s))))

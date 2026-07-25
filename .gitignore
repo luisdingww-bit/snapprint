@@ -33,6 +33,9 @@ Thumbs.db
 outputs/.task_registry.json
 outputs/.task_registry.json.tmp
 
+# 社区数据库（SQLite 运行时生成，不入库）
+data/
+
 # IDE
 .idea/
 .vscode/

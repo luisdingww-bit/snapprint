@@ -47,11 +47,23 @@ OUTPUTS.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="SnapPrint · 咔印3D", version="0.5.0")
 
-# 允许跨域：让纯静态前端（如 surge 线上 Demo）能够把请求发到用户本地后端
+# 允许跨域：让纯静态前端（如 surge 线上 Demo）能够把请求发到用户本地后端。
+# 鉴权走请求头 X-API-Key（而非 Cookie），故无需 allow_credentials；
+# origins 默认锁定为「公开 Demo + 本地地址」，可用 SNAPRINT_CORS_ORIGINS
+# 以逗号分隔覆盖（内网/小团队部署时建议显式列出可信前端来源）。
+_CORS_DEFAULTS = [
+    "https://snapprint-3d.surge.sh",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+_cors_env = os.environ.get("SNAPRINT_CORS_ORIGINS", "").strip()
+CORS_ORIGINS = [o for o in _cors_env.split(",") if o.strip()] or _CORS_DEFAULTS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,17 +93,51 @@ def guard(_request: Request, x_api_key: str = Header(None)) -> None:
 
 # ---------------------------------------------------------------------------
 # 异步任务队列（内存注册表 + 后台线程；单机部署零额外依赖）
+# 可选持久化：设 SNAPRINT_TASK_PERSIST=1 时把任务注册表落盘到
+# OUTPUTS/.task_registry.json，重启后端后任务仍在（生成的文件本身就在
+# OUTPUTS/ 下）。默认关闭，纯内存态，重启即清空。
 # ---------------------------------------------------------------------------
 TASKS: dict = {}
 _TASKS_LOCK = threading.Lock()
 _TASK_TTL_SEC = 3600        # 完成的任务保留 1 小时
 _TASK_MAX = 200             # 注册表上限（超出先清最旧的已完成任务）
+_TASK_STORE_FILE = OUTPUTS / ".task_registry.json"
+_TASK_PERSIST = os.environ.get("SNAPRINT_TASK_PERSIST", "0") == "1"
+
+
+def _task_save() -> None:
+    """（可选）把任务注册表原子落盘；失败静默，不影响内存态运行。"""
+    if not _TASK_PERSIST:
+        return
+    try:
+        import json as _json
+        tmp = _TASK_STORE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(_json.dumps(TASKS, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_TASK_STORE_FILE)
+    except Exception:  # pragma: no cover - 落盘失败不应阻断主流程
+        pass
+
+
+def _task_load() -> None:
+    """（可选）启动时从落盘文件恢复任务注册表。"""
+    if not _TASK_PERSIST or not _TASK_STORE_FILE.exists():
+        return
+    try:
+        import json as _json
+        data = _json.loads(_TASK_STORE_FILE.read_text(encoding="utf-8"))
+        TASKS.update({k: v for k, v in data.items() if isinstance(v, dict)})
+    except Exception:  # pragma: no cover - 损坏的落盘文件直接忽略
+        pass
+
+
+_task_load()
 
 
 def _task_update(task_id: str, **kw) -> None:
     with _TASKS_LOCK:
         if task_id in TASKS:
             TASKS[task_id].update(kw)
+            _task_save()
 
 
 def _task_prune() -> None:
@@ -106,6 +152,7 @@ def _task_prune() -> None:
         if overflow > 0:
             for tid, _ in sorted(done, key=lambda x: x[1]["created"])[:overflow]:
                 TASKS.pop(tid, None)
+        _task_save()
 
 
 def _build_cfg(*, tile_w=60.0, tile_d=60.0, base=2.0, relief=4.0, target_tris=80000) -> SnapConfig:
@@ -176,6 +223,7 @@ def _submit_task(data: bytes, mode: str, model: str, cfg: SnapConfig, *,
             "result": None,
             "error": None,
         }
+        _task_save()
     threading.Thread(
         target=_run_task,
         args=(task_id, data, mode, model, cfg),

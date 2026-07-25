@@ -29,6 +29,10 @@ Thumbs.db
 # 本地测试依赖（隔离安装目录，不入库）
 .pytestdeps/
 
+# 任务注册表落盘文件（运行时生成，见 SNAPRINT_TASK_PERSIST）
+outputs/.task_registry.json
+outputs/.task_registry.json.tmp
+
 # IDE
 .idea/
 .vscode/

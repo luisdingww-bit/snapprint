@@ -50,8 +50,6 @@ def postprocess(
 
     # 4) 摆正：底面落在 z=0，整体朝上
     if orient_up:
-        mesh = mesh.apply_transform(trimesh.transformations.rotation_matrix(
-            0, [0, 0, 1]))  # 占位，真正对齐在下方
         # 把质心 x/y 居中、底面贴 z=0
         bounds = mesh.bounds
         offset = [-(bounds[0][0] + bounds[1][0]) / 2,

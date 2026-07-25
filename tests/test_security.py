@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -64,14 +65,11 @@ def test_model_field_relief_ignored():
     assert _poll(r.json()["task_id"])["status"] == "done"
 
 
-def test_rate_limit():
-    """启用限流后，超过阈值返回 429。"""
-    M.RATE_LIMIT = 2
-    try:
-        files = {"file": ("t.png", _png(), "image/png")}
-        client.post("/api/generate", files=files, data={"mode": "relief"})
-        client.post("/api/generate", files=files, data={"mode": "relief"})
-        r3 = client.post("/api/generate", files=files, data={"mode": "relief"})
-        assert r3.status_code == 429
-    finally:
-        M.RATE_LIMIT = 0
+def test_rate_limit(monkeypatch):
+    """启用限流后，超过阈值返回 429（用 monkeypatch 隔离，不污染全局）。"""
+    monkeypatch.setattr(M, "RATE_LIMIT", 2)
+    files = {"file": ("t.png", _png(), "image/png")}
+    client.post("/api/generate", files=files, data={"mode": "relief"})
+    client.post("/api/generate", files=files, data={"mode": "relief"})
+    r3 = client.post("/api/generate", files=files, data={"mode": "relief"})
+    assert r3.status_code == 429

@@ -23,6 +23,7 @@
 
 - 📤 **上传即分析**：拖入 `.stl / .obj / .ply / .3mf / .glb / .gltf / .off`，秒级出报告
 - 🖼️ **照片生成 3D**：上传照片 → 离线浮雕（零依赖秒出、水密可打）或 AI 模式（Hunyuan3D 等需自备 GPU+权重），生成即分析并入画廊
+- 🧩 **模型实例库**：16 款内置参数化真 3D 几何（花瓶 / 宝石 / 圆环 / 棋子 / 灯笼 / 甜甜圈…），无需照片、可调尺寸，一键生成 → 分析 → 入画廊，全部水密可直接打印
 - 🩺 **可打印性报告**：水密性、悬垂占比、接触面、尺寸、体积、层高、填充、支撑建议、Brim、预估重量与时长
 - 🏅 **可打印性评分 0–100**：一眼看出模型「省不省心」
 - 🖼️ **社区画廊**：所有模型按时间倒序，卡片展示评分 / 尺寸 / 作者
@@ -61,6 +62,8 @@ python -m app.main
 | `POST /api/upload` | 上传模型文件 + 自动分析，进入画廊 |
 | `POST /api/generate` | 照片 → 可打印 3D（离线浮雕 / AI 模式），分析后入画廊 |
 | `GET  /api/models` | 模型动物园：生成后端列表 + 本机权重可用性探测 |
+| `GET  /api/shapes` | 内置模型实例库：16 款参数化真 3D 几何元数据 |
+| `POST /api/shapes/{id}/generate` | 一键生成模型实例（可调 H/D/seg/twist/lobes），分析后入画廊 |
 | `GET  /api/gallery` | 画廊列表（分页 `?limit=&offset=`） |
 | `GET  /api/models/{id}` | 模型详情 = 分析报告 + 评论 |
 | `POST /api/models/{id}/comments` | 发表评论（`author`、`body`） |
@@ -96,6 +99,7 @@ snapprint/
 │   ├── pipeline.py      # 图生3D 编排：图片 → 网格 → 后处理
 │   ├── backends.py      # AI 后端适配层（Hunyuan3D/TripoSR/SF3D/Trellis，缺依赖优雅报错）
 │   ├── config.py        # 配置 + 模型动物园 MODEL_ZOO
+│   ├── shapes.py        # 内置模型实例库：16 款参数化真 3D 几何（旋转体/圆环）
 │   ├── postprocess.py   # 网格后处理工具（水密/缩放/统计）
 │   └── db.py            # 社区数据层（零依赖 SQLite：模型 + 评论）
 ├── web/                 # 简洁单页前端：上传 → 画廊 → 详情 → 评论

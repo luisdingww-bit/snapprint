@@ -343,10 +343,78 @@ async function submitGenerate() {
   }
 }
 
+// ---------- 内置模型实例库 ----------
+let shapePicked = null; // { id, name, emoji, defaults }
+async function setupShapes() {
+  let shapes = [];
+  try {
+    ({ shapes } = await api("/api/shapes"));
+  } catch (e) {
+    return; // 后端离线：区块保持空，横幅已提示
+  }
+  const grid = $("#shapeGrid");
+  grid.innerHTML = shapes
+    .map(
+      (s) => `<div class="shape-tile" data-id="${esc(s.id)}" title="${esc(s.name)}">
+        <div class="shape-emoji">${s.emoji}</div>
+        <div class="shape-name">${esc(s.name)}</div>
+        <div class="shape-tag muted small">${esc(s.tag)}</div>
+      </div>`
+    )
+    .join("");
+  $$(".shape-tile", grid).forEach((t) =>
+    t.addEventListener("click", () => {
+      $$(".shape-tile", grid).forEach((x) => x.classList.remove("sel"));
+      t.classList.add("sel");
+      shapePicked = shapes.find((s) => s.id === t.dataset.id);
+      const d = shapePicked.defaults;
+      $("#shH").value = d.H;
+      $("#shD").value = d.D;
+      $("#shTwist").value = d.twist;
+      $("#shLobes").value = d.lobes;
+      $("#shapeParams").style.display = "";
+      $("#shSubmit").disabled = false;
+      $("#shSubmit").textContent = `生成「${shapePicked.name}」并发布到社区`;
+    })
+  );
+  $("#shSubmit").addEventListener("click", submitShape);
+}
+
+async function submitShape() {
+  if (!shapePicked) return;
+  const btn = $("#shSubmit");
+  btn.disabled = true;
+  $("#shMsg").className = "msg";
+  $("#shMsg").textContent = "生成中…（纯参数几何，秒级）";
+  const fd = new FormData();
+  const H = parseFloat($("#shH").value), D = parseFloat($("#shD").value);
+  const tw = parseFloat($("#shTwist").value), lb = parseInt($("#shLobes").value, 10);
+  if (H > 0) fd.append("H", H);
+  if (D > 0) fd.append("D", D);
+  if (!Number.isNaN(tw)) fd.append("twist", tw);
+  if (!Number.isNaN(lb) && lb >= 0) fd.append("lobes", lb);
+  const author = $("#shAuthor").value.trim();
+  if (author) fd.append("author", author);
+  try {
+    const res = await api(`/api/shapes/${shapePicked.id}/generate`, { method: "POST", body: fd });
+    $("#shResult").innerHTML = `<div class="report-head"><h3>${res.shape.emoji} ${esc(res.shape.name)} · 生成完成，已发布到社区</h3></div>
+      <div class="report">${buildReport(res.report, { id: res.id, ext: ".stl" })}</div>`;
+    $("#shMsg").className = "msg ok";
+    $("#shMsg").textContent = "✓ 已加入社区画廊，下方可看到你的模型。";
+    await loadGallery();
+  } catch (e) {
+    $("#shMsg").className = "msg err";
+    $("#shMsg").textContent = "✕ " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- 初始化 ----------
 (async function init() {
   setupDropzone();
   setupGenerate();
+  setupShapes();
   $("#submit").addEventListener("click", submitUpload);
   $("#detailClose").addEventListener("click", () => $("#detail").classList.add("hidden"));
   $("#detail").addEventListener("click", (e) => {

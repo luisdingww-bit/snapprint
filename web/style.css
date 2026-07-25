@@ -157,3 +157,28 @@ input:focus, select:focus { border-color: var(--accent); }
   padding: 1px 6px;
   font-size: 12.5px;
 }
+
+/* 内置模型实例库 */
+.shape-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.shape-tile {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 6px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, transform .15s, background .15s;
+  user-select: none;
+}
+.shape-tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+.shape-tile.sel {
+  border-color: var(--accent);
+  background: rgba(255,122,69,.10);
+}
+.shape-emoji { font-size: 28px; line-height: 1.2; }
+.shape-name { font-size: 13px; margin-top: 6px; font-weight: 600; }
+.shape-tag { margin-top: 2px; }

@@ -17,6 +17,7 @@
     </div>
     <nav class="nav-links">
       <a href="#generate">照片生成 3D</a>
+      <a href="#shapes">模型实例</a>
       <a href="#upload">上传分析</a>
       <a href="#gallery">社区画廊</a>
     </nav>
@@ -54,6 +55,26 @@
       <div id="genMsg" class="msg"></div>
 
       <div id="genResult"></div>
+    </section>
+
+    <!-- 内置模型实例库：16 款参数化真 3D 几何，一键生成 → 分析 → 入画廊 -->
+    <section id="shapes" class="card">
+      <h2>🧩 模型实例库</h2>
+      <p class="muted">16 款内置参数化真 3D 几何（花瓶、宝石、圆环、棋子、灯笼…），无需照片、全部水密可直接打印。点选一款，可调尺寸后一键生成并发布到社区。</p>
+
+      <div id="shapeGrid" class="shape-grid"></div>
+
+      <div class="meta-row" id="shapeParams" style="display:none">
+        <label>高度 mm<input type="number" id="shH" min="5" max="300" step="1" /></label>
+        <label>直径 mm<input type="number" id="shD" min="5" max="300" step="1" /></label>
+        <label>扭转°<input type="number" id="shTwist" min="-1080" max="1080" step="10" /></label>
+        <label>棱数<input type="number" id="shLobes" min="0" max="32" step="1" /></label>
+        <label>昵称<input type="text" id="shAuthor" placeholder="匿名" maxlength="24" /></label>
+      </div>
+
+      <button id="shSubmit" class="btn primary" disabled>生成并发布到社区</button>
+      <div id="shMsg" class="msg"></div>
+      <div id="shResult"></div>
     </section>
 
     <!-- 后端离线提示（默认隐藏，前端探测到后端不可达时显示） -->

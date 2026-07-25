@@ -6,6 +6,8 @@
   POST /api/upload                上传模型文件 + 自动分析，进入画廊
   POST /api/generate              照片 → 可打印 3D（离线浮雕 / AI 模式），分析后入画廊
   GET  /api/models                模型动物园（生成后端列表 + 本机权重可用性）
+  GET  /api/shapes                内置模型实例库（16 款参数化真 3D 几何）
+  POST /api/shapes/{id}/generate  一键生成模型实例，分析后入画廊
   GET  /api/gallery               画廊列表（分页，按时间倒序）
   GET  /api/models/{id}           模型详情 = 分析报告 + 评论
   POST /api/models/{id}/comments  发表评论
@@ -39,7 +41,7 @@ OUTPUTS = ROOT / "outputs"
 UPLOADS = OUTPUTS / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.7.0")
+app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.8.0")
 
 # 允许跨域：鉴权走请求头 X-API-Key（而非 Cookie），故无需 allow_credentials；
 # 社区为公开服务，默认允许所有来源（"*"），这样前端无论托管在 CloudStudio /
@@ -252,6 +254,105 @@ def list_models(_: None = Depends(guard)):
         raise HTTPException(status_code=500, detail=f"模型列表失败: {e}")
 
 
+@app.get("/api/shapes")
+def list_shapes(_: None = Depends(guard)):
+    """内置模型实例库：16 款参数化真 3D 几何（花瓶/宝石/圆环/棋子/灯笼…）。
+
+    v0.5 浏览器版「内置模型库」的后端移植：无需照片、纯参数驱动，
+    全部水密可直接切片打印。前端用于「模型实例」一键生成面板。
+    """
+    try:
+        from .shapes import shape_list
+
+        return JSONResponse({"shapes": shape_list()})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"实例列表失败: {e}")
+
+
+@app.post("/api/shapes/{shape_id}/generate")
+async def generate_shape(
+    shape_id: str,
+    H: float = Form(0),
+    D: float = Form(0),
+    seg: int = Form(0),
+    twist: float = Form(0),
+    lobes: int = Form(-1),
+    author: str = Form(""),
+    printer: str = Form(""),
+    material: str = Form(""),
+    _: None = Depends(guard),
+):
+    """一键生成内置模型实例 → 可打印性分析 → 发布到社区画廊。
+
+    参数（表单，可全部留空用默认值）：H=高 mm、D=直径 mm、seg=分段、
+    twist=扭转度数、lobes=棱数。生成的 .stl 可直接下载切片，
+    另存带顶点色 .obj 便于彩色查看。
+    """
+    from .shapes import build, by_id
+
+    sh = by_id(shape_id)
+    if sh is None:
+        raise HTTPException(status_code=404, detail=f"未知模型实例: {shape_id}")
+
+    params: dict = {}
+    if H > 0:
+        params["H"] = H
+    if D > 0:
+        params["D"] = D
+    if seg > 0:
+        params["seg"] = seg
+    if twist:
+        params["twist"] = twist
+    if lobes >= 0:
+        params["lobes"] = lobes
+
+    try:
+        mesh = build(shape_id, params)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成失败: {e}")
+
+    import io as _io
+
+    stl_buf = _io.BytesIO()
+    try:
+        mesh.export(stl_buf, file_type="stl")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出失败: {e}")
+    stl_bytes = stl_buf.getvalue()
+
+    try:
+        rec = advisor.analyze_upload(
+            stl_bytes, filename=f"{shape_id}.stl", printer=printer, material=material
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析失败: {e}")
+
+    sid = uuid.uuid4().hex[:12]
+    stl_path = UPLOADS / f"{sid}.stl"
+    stl_path.write_bytes(stl_bytes)
+    try:
+        mesh.export(UPLOADS / f"{sid}.obj")  # 带顶点色
+    except Exception:
+        pass
+    db.add_submission(
+        sid=sid,
+        filename=f"{sh['name']}_{shape_id}.stl",
+        author=author,
+        ext=".stl",
+        size_bytes=len(stl_bytes),
+        model_path=str(stl_path),
+        report=rec,
+    )
+    return JSONResponse(
+        {
+            "id": sid,
+            "shape": {"id": sh["id"], "name": sh["name"], "emoji": sh["emoji"], "tag": sh["tag"]},
+            "report": rec,
+            "score": rec.get("score", 0),
+        }
+    )
+
+
 @app.get("/api/gallery")
 def gallery(limit: int = 24, offset: int = 0, _: None = Depends(guard)):
     """画廊列表（分页，按时间倒序）。"""
@@ -303,7 +404,7 @@ def scoreboard(limit: int = 12, _: None = Depends(guard)):
 @app.get("/api/health")
 def health():
     """健康检查（无需鉴权），供前端探测后端在线状态 / Docker 健康检查。"""
-    return JSONResponse({"ok": True, "version": "0.7.0"})
+    return JSONResponse({"ok": True, "version": "0.8.0"})
 
 
 # 静态下载上传的模型原文件（注册在前，优先级高于根 "/" 挂载）

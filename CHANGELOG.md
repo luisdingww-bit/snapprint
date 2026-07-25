@@ -3,6 +3,20 @@
 所有 notable 变更都会记录在此文件。格式参考 [Keep a Changelog](https://keepachangelog.com/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.1] - 2026-07-25 · Railway 一键部署支持
+
+> 让 SnapPrint 社区版零服务器运维上线：内置 Railway 配置，从 GitHub 一键部署，
+> 并补上数据持久化支持与部署文档。
+
+### 新增
+- **`railway.json`**：Nixpacks 构建 + `uvicorn app.main:app` 启动 + `/api/health`
+  健康检查，支持从 GitHub 仓库一键部署到 Railway 免费层。
+- **`runtime.txt`**：锁定 Python 3.11，保证 `trimesh` / `FastAPI` 构建稳定。
+- **`app/db.py` 支持 `SNAPRINT_DATA_DIR` 环境变量**：Railway 挂 Volume 到该目录即
+  可持久化社区数据库与上传文件，默认仍用仓库内 `data/`。
+- **`docs/部署.md` 新增「第七节 Railway 免费托管」**：部署步骤、ephemeral 存储限制
+  与 Volume 持久化方案。
+
 ## [0.6.0] - 2026-07-25 · 社区版重构（聚焦实质）
 
 > 产品转向：砍掉繁杂的「图生 3D 多模式 / 模型动物园 / 批量 / Blender/ComfyUI 集成」，

@@ -6,12 +6,15 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
+# 数据目录可经 SNAPRINT_DATA_DIR 覆盖（部署到 Railway / 容器时挂持久卷到该路径）。
+_DATA_DIR_ENV = (os.environ.get("SNAPRINT_DATA_DIR") or "").strip()
+DATA_DIR = Path(_DATA_DIR_ENV) if _DATA_DIR_ENV else (ROOT / "data")
 DB_PATH = DATA_DIR / "snapprint.db"
 
 

@@ -29,12 +29,19 @@
 ### 工程化
 - **依赖锁定（R6）**：新增 `requirements.lock.txt`（`pip freeze` 生成，52 个
   固定版本），用于严格可复现安装；日常开发仍用 `requirements.txt`（仅下界）。
-- **AI 环境准备脚本**：新增 `scripts/setup_ai_models.py`，一键克隆 TripoSR、
-  安装 hy3dgen，并 `--check` 查看各后端可用性，降低「AI 模式」上手门槛。
+- **AI 环境准备脚本升级**：`scripts/setup_ai_models.py` 从「仅克隆/装依赖」
+  升级为**真正可预置权重**——新增 `--download <HF仓库ID>`、`--hunyuan3d-mini`、
+  `--triposg`、`--sf3d`、`--trellis`、`--all`、`--mirror {hf,modelscope}`，
+  用 `huggingface_hub` / `huggingface-cli` / `modelscope` 把权重落到与
+  `config.MODEL_ZOO` 对应的 `models/<目录>`，实现「开箱即用 / 离线预置」。
+  仍保留 `--triposr`（克隆仓库）、`--hunyuan3d`（装 hy3dgen）、`--check`。
 
 ### 文档
 - README 增补 `SNAPRINT_CORS_ORIGINS` / `SNAPRINT_TASK_PERSIST` 说明与
   `setup_ai_models.py` 用法。
+- **`docs/部署.md` 新增「权重下载（开箱即用 / 离线预置）」章节**：汇总各后端
+  HuggingFace 仓库链接、`huggingface-cli download` 一键命令、权重目录映射，
+  以及国内加速镜像（`hf-mirror.com` / `ModelScope`）。原二/三节补充显式下载行。
 
 ---
 

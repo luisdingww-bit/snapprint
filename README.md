@@ -127,7 +127,7 @@ SnapPrint 把「照片 → 可打印3D」做成可嵌入其他工具的能力，
 - `SNAPRINT_CORS_ORIGINS`：逗号分隔的可信前端来源（如 `https://your-demo.com,http://localhost:8000`）。默认已锁定为公开 Demo + 本地地址；跨域鉴权走 `X-API-Key` 请求头，不依赖 Cookie。
 - `SNAPRINT_TASK_PERSIST=1`：把异步任务注册表落盘到 `outputs/.task_registry.json`，**重启后端后任务仍在**（生成的文件本就在 `outputs/` 下）。默认关闭，纯内存态。
 
-**准备 AI 模式环境（可选）**：`python scripts/setup_ai_models.py --triposr`（克隆 TripoSR + 装依赖）或 `--hunyuan3d`（装 hy3dgen），`--check` 查看各后端可用性。详见 `docs/部署.md`。依赖可复现安装见 `requirements.lock.txt`。
+**准备 AI 模式环境（可选）**：`python scripts/setup_ai_models.py --triposr`（克隆 TripoSR + 装依赖）或 `--hunyuan3d`（装 hy3dgen），`--check` 查看各后端可用性。要**预置权重实现开箱即用**，用 `--download <HF仓库ID>`（如 `tencent/Hunyuan3D-2`）或便捷开关 `--hunyuan3d-mini / --triposg / --sf3d / --trellis`，国内加 `--mirror hf`。各后端权重下载链接与国内镜像见 `docs/部署.md`。依赖可复现安装见 `requirements.lock.txt`。
 
 ### Blender 插件
 1. 先把 `blender/SnapPrintBlender/` 整个文件夹复制到 Blender 的 `scripts/addons/` 目录；

@@ -29,7 +29,8 @@ def test_models_list():
     assert all("weights" in m and "backend" in m for m in models)
 
 
-def _poll(tid, limit=60):
+def _poll(tid, limit=120):
+    """轮询任务直到完成；上限 120 次 × 0.3s ≈ 36s，兼容全量套件下的资源争用。"""
     for _ in range(limit):
         t = client.get(f"/api/tasks/{tid}").json()
         if t["status"] in ("done", "error"):

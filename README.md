@@ -3,7 +3,15 @@
 > 上传你自己的 3D 模型，系统自动分析「它能不能打」，并分享到社区画廊让成员一起看。
 > 开源 · 中文友好 · Apache-2.0 商用友好。
 
-**🌐 在线 UI 预览（前端）：<https://e987b12ce3c541599e63f76bfc9fc8cf.app.codebuddy.work>** —— 纯静态预览，画廊 / 上传 / 评论需后端。完整社区推荐用 **Railway 一键部署**（见 [docs/部署.md 第七节](docs/部署.md)），或本地 `python -m app.main`。
+**🌐 在线体验（已部署，前端直连后端）：**
+
+| 站点 | 地址 | 说明 |
+|---|---|---|
+| 社区 · 画廊 / 评分 / 排行榜 | <https://snapprint-production.up.railway.app/> | 完整社区：可打印性分析 + 社区评分（中位数 / 标准差 / 4★+ 占比 + 文字分析） |
+| 创作工具 · 五模式图生 3D | <https://snapprint-3d.surge.sh/> | 照片浮雕 / 2D 轮廓拉伸 / 真实 3D 几何 / 模型库(33 款) / 3DGS 高斯泼溅 |
+| 品牌着陆页 · 电影感前导 | <https://mainframe-hero.surge.sh/> | 视频擦洗首屏，一键进入工作台与社区 |
+
+> 社区与工具均前端直连后端；本地运行见 `python -m app.main`，或 **Railway 一键部署**（见 [docs/部署.md 第七节](docs/部署.md)）。
 
 ---
 

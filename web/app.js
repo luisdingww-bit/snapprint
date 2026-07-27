@@ -29,19 +29,31 @@ async function api(path, opts) {
   return r.json();
 }
 
-// 探测后端是否在线；离线时显示提示横幅
+// 探测后端是否在线；离线时显示提示横幅。
+// 改进：超时放宽到 15s（兼容 Railway 冷启动），失败重试 3 次（带退避），
+// 只有多次全失败才显示横幅；后端回暖后横幅会自动消失（见下方定时复检）。
 async function checkBackend() {
   const banner = $("#backendBanner");
   if (!banner) return;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 4000);
-    const r = await fetch(API_BASE + "/api/health", { signal: ctrl.signal });
-    clearTimeout(t);
-    banner.style.display = r.ok ? "none" : "block";
-  } catch {
-    banner.style.display = "block";
+  const RETRIES = 3;
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const r = await fetch(API_BASE + "/api/health", { signal: ctrl.signal });
+      clearTimeout(t);
+      if (r.ok) {
+        banner.style.display = "none";
+        return;
+      }
+    } catch {
+      /* 继续重试 */
+    }
+    if (attempt < RETRIES - 1) {
+      await new Promise((res) => setTimeout(res, 2000));
+    }
   }
+  banner.style.display = "block";
 }
 
 // ---------- 报告渲染 ----------
@@ -562,6 +574,8 @@ async function loadBoard(sort) {
     if (e.target.id === "detail") $("#detail").classList.add("hidden");
   });
   await checkBackend();
+  // 后端（Railway 免费版）可能休眠后冷启动，定时复检：回暖后横幅自动消失
+  setInterval(checkBackend, 15000);
   try {
     await setupPresets();
   } catch (e) {

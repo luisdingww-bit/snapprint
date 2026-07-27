@@ -375,7 +375,9 @@ def model_detail(sid: str, _: None = Depends(guard)):
     C = 5.0
     M = g["avg_rating"] or 0.0
     n = rstats["count"]
-    rstats["bayes"] = round((C * M + rstats["avg"] * n) / (C + n), 2) if n else round(M, 2)
+    rstats["bayes"] = (
+        round((C * M + rstats["avg"] * n) / (C + n), 2) if n else round(sub.get("score", 0), 2)
+    )
     rstats["printability"] = sub.get("score", 0)
     return JSONResponse({"submission": sub, "comments": comments, "rating": rstats, "global": g})
 
@@ -437,7 +439,8 @@ def scoreboard(limit: int = 12, sort: str = "community", _: None = Depends(guard
         rs = db.get_rating_stats(it["id"])
         it["rating_count"] = rs["count"]
         it["community_rating"] = (
-            round((C * M + rs["avg"] * rs["count"]) / (C + rs["count"]), 2) if rs["count"] else round(M, 2)
+            round((C * M + rs["avg"] * rs["count"]) / (C + rs["count"]), 2)
+            if rs["count"] else round(it["score"], 2)
         )
     if sort == "printability":
         ranked = sorted(items, key=lambda x: x["score"], reverse=True)

@@ -242,3 +242,16 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .rating-form textarea:focus { border-color: var(--accent); }
 .rating-form .btn.primary { align-self: flex-start; }
+/* 评分数据条 + 文字分析 */
+.rating-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.rating-chips .chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--muted);
+}
+.rating-chips .chip b { color: var(--text); font-size: 13.5px; }
+.rating-analysis {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--line); line-height: 1.6;
+}
+.rating-analysis b { color: var(--accent); }

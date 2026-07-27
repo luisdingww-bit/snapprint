@@ -201,6 +201,7 @@ function buildRating(rating, sub) {
   const avg = rating.avg || 0;
   const cnt = rating.count || 0;
   const dist = rating.dist || {};
+  const insufficient = rating.insufficient && cnt > 0;
   const bars = [5, 4, 3, 2, 1]
     .map((s) => {
       const n = dist[String(s)] || 0;
@@ -213,27 +214,46 @@ function buildRating(rating, sub) {
   const p = rating.printability != null ? rating.printability : (sub && sub.score) || 0;
   const verdict =
     p >= 80 ? "推荐直接打印" : p >= 60 ? "打印可行，注意支撑" : "打印难度较高，建议先优化模型";
-  const insight = cnt
-    ? `社区评分 ${avg.toFixed(1)}★（${cnt} 人评） · 可打印性 ${p} · ${verdict}`
-    : `还没有评分 · 可打印性 ${p}（等你来评）`;
-  const bayesTxt = rating.bayes != null ? rating.bayes : "—";
+  // 分歧度：标准差越小，评价越一致
+  const std = rating.std || 0;
+  const disp = cnt > 1 ? (std < 0.8 ? "低" : std < 1.3 ? "中等" : "较高") : "—";
+  // 数据条（少量关键统计）
+  const chips = cnt
+    ? `<div class="rating-chips">
+         <span class="chip"><b>${avg.toFixed(1)}</b> 平均★</span>
+         <span class="chip"><b>${rating.median}</b> 中位★</span>
+         <span class="chip"><b>${std}</b> 标准差</span>
+         <span class="chip"><b>${rating.pct_4plus}%</b> 给 4★+</span>
+       </div>`
+    : "";
+  // 文字分析（自动生成）
+  let insight;
+  if (!cnt) {
+    insight = `还没有评分 · 可打印性 ${p}（等你来评）`;
+  } else if (insufficient) {
+    insight = `样本不足（仅 ${cnt} 人评，需 ≥3 人才公布社区综合分）· 可打印性 ${p} · ${verdict}`;
+  } else {
+    const bayesTxt = rating.bayes != null ? rating.bayes : "—";
+    insight = `社区综合分 <b>${bayesTxt}★</b>（贝叶斯调整，基于 ${cnt} 人评）· 平均 ${avg.toFixed(1)}★ / 中位 ${rating.median}★ · 标准差 ${std}（分歧度${disp}）· ${rating.pct_4plus}% 的评分者给出 4★ 及以上 · 可打印性 ${p}，建议：${verdict}`;
+  }
   return `
     <div class="rating-panel">
       <h3 style="margin:0 0 8px">社区评分 <span class="muted small">（1–5 星 + 文字评价，每作者限评一次）</span></h3>
       <div class="rating-summary">
         <div class="rating-avg ${scoreClass(p)}">${cnt ? avg.toFixed(1) : "—"}<span class="small">★</span></div>
         <div class="rating-meta">
-          <div class="muted small">${cnt ? cnt + " 人评价" : "还没有评价"} · 贝叶斯调整分 ${bayesTxt}</div>
+          <div class="muted small">${cnt ? cnt + " 人评价" : "还没有评价"}${insufficient ? " · 样本不足" : ""}</div>
           <div class="dist">${bars}</div>
         </div>
       </div>
-      <div class="muted small" style="margin:8px 0">${insight}</div>
+      ${chips}
+      <div class="rating-analysis muted small">${insight}</div>
       <div class="rating-form">
         <div class="stars" id="rateStars">
           ${[1, 2, 3, 4, 5].map((s) => `<span class="star" data-s="${s}">★</span>`).join("")}
         </div>
         <input id="rateAuthor" placeholder="昵称（必填，不可匿名）" maxlength="24" />
-        <textarea id="rateReview" placeholder="说说你的打印体验或改进建议（至少 10 字）" maxlength="500"></textarea>
+        <textarea id="rateReview" placeholder="说说你的打印体验或改进建议（至少 15 字；低于 3★ 请写清原因）" maxlength="500"></textarea>
         <button class="btn primary" id="rateSend">提交评分</button>
         <span id="rateMsg" class="msg small"></span>
       </div>
@@ -256,9 +276,14 @@ async function sendRating(id) {
     msg.textContent = "昵称必填（不可匿名）";
     return;
   }
-  if (review.length < 10) {
+  if (review.length < 15) {
     msg.className = "msg small err";
-    msg.textContent = "评价至少 10 个字";
+    msg.textContent = "评价至少 15 个字";
+    return;
+  }
+  if (selectedStars < 3 && review.length < 25) {
+    msg.className = "msg small err";
+    msg.textContent = "低于 3★ 请至少写 25 字说明原因";
     return;
   }
   try {
@@ -522,10 +547,12 @@ async function loadStats() {
     const g = await api("/api/stats");
     const top = g.top_authors && g.top_authors[0] ? g.top_authors[0].author : "—";
     const avgTxt = g.avg_rating ? g.avg_rating.toFixed(1) + "★" : "—";
+    const medTxt = g.median_rating ? g.median_rating + "★" : "—";
     $("#statsStrip").innerHTML = `
       <div class="stat"><b>${g.total_submissions}</b><span>作品</span></div>
       <div class="stat"><b>${g.total_ratings}</b><span>评价</span></div>
       <div class="stat"><b>${avgTxt}</b><span>平均社区评分</span></div>
+      <div class="stat"><b>${medTxt}</b><span>评分中位数</span></div>
       <div class="stat"><b>${esc(top)}</b><span>最活跃评价者</span></div>`;
   } catch (e) {
     /* 后端离线时静默 */
@@ -549,7 +576,9 @@ async function loadBoard(sort) {
             ${
               currentBoardSort === "printability"
                 ? `<span class="score-badge ${scoreClass(it.score)}">${it.score}</span>`
-                : `<b>${it.community_rating != null ? it.community_rating.toFixed(1) : "—"}★</b><span class="muted small">（${it.rating_count || 0} 评）</span>`
+                : (it.community_rating != null
+                    ? `<b>${it.community_rating.toFixed(1)}★</b><span class="muted small">（${it.rating_count || 0} 评）</span>`
+                    : `<span class="muted small">样本不足</span>`)
             }
           </div>
         </li>`

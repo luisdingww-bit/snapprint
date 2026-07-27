@@ -190,42 +190,72 @@ def add_rating(*, sid: str, author: str, stars: int, review: str) -> None:
 
 
 def get_rating_stats(sid: str) -> dict:
-    """某作品的评分聚合：计数、均值、星级分布（含每星人数）。"""
+    """某作品的评分聚合：计数、均值、中位数、标准差、4★+ 占比、星级分布。"""
     init()
     c = _connect()
     rows = c.execute(
-        "SELECT stars, COUNT(*) AS n FROM ratings WHERE submission_id=? GROUP BY stars",
-        (sid,),
+        "SELECT stars FROM ratings WHERE submission_id=?", (sid,)
     ).fetchall()
     c.close()
+    stars_list = [int(r["stars"]) for r in rows]
+    total = len(stars_list)
     dist = {str(k): 0 for k in (5, 4, 3, 2, 1)}
-    total = 0
-    ssum = 0
-    for r in rows:
-        s = int(r["stars"])
-        n = int(r["n"])
-        dist[str(s)] = n
-        total += n
-        ssum += s * n
-    avg = round(ssum / total, 2) if total else 0.0
-    return {"count": total, "avg": avg, "dist": dist}
+    for s in stars_list:
+        dist[str(s)] += 1
+    avg = round(sum(stars_list) / total, 2) if total else 0.0
+    # 中位数（偶数个取中间两值平均，保留 1 位）
+    median = 0.0
+    if total:
+        sl = sorted(stars_list)
+        mid = total // 2
+        median = sl[mid] if total % 2 else round((sl[mid - 1] + sl[mid]) / 2, 1)
+    # 总体标准差（衡量评价分歧度）
+    std = 0.0
+    if total > 1:
+        mean = sum(stars_list) / total
+        var = sum((x - mean) ** 2 for x in stars_list) / total
+        std = round(var ** 0.5, 2)
+    pct_4plus = (
+        round(100 * sum(1 for s in stars_list if s >= 4) / total) if total else 0
+    )
+    return {
+        "count": total,
+        "avg": avg,
+        "median": median,
+        "std": std,
+        "pct_4plus": pct_4plus,
+        "dist": dist,
+    }
 
 
 def global_rating_stats() -> dict:
-    """社区全局评分统计：总作品、总评价、全局平均评分、最活跃评价者。"""
+    """社区全局评分统计：总作品、总评价、全局平均/中位数/标准差评分、最活跃评价者。"""
     init()
     c = _connect()
     total_sub = c.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
-    total_rate = c.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
-    row = c.execute("SELECT AVG(stars) AS m FROM ratings").fetchone()
-    avg = round(row["m"], 2) if row["m"] is not None else 0.0
+    rows = c.execute("SELECT stars FROM ratings").fetchall()
+    all_stars = [int(r["stars"]) for r in rows]
+    n = len(all_stars)
+    avg = round(sum(all_stars) / n, 2) if n else 0.0
+    median = 0.0
+    if n:
+        sl = sorted(all_stars)
+        mid = n // 2
+        median = sl[mid] if n % 2 else round((sl[mid - 1] + sl[mid]) / 2, 1)
+    std = 0.0
+    if n > 1:
+        mean = sum(all_stars) / n
+        var = sum((x - mean) ** 2 for x in all_stars) / n
+        std = round(var ** 0.5, 2)
     top = c.execute(
         "SELECT author, COUNT(*) AS n FROM ratings GROUP BY author ORDER BY n DESC LIMIT 5"
     ).fetchall()
     c.close()
     return {
         "total_submissions": total_sub,
-        "total_ratings": total_rate,
+        "total_ratings": n,
         "avg_rating": avg,
+        "median_rating": median,
+        "std_rating": std,
         "top_authors": [{"author": r["author"], "count": r["n"]} for r in top],
     }

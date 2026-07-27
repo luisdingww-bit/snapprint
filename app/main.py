@@ -45,6 +45,9 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.8.0")
 
+# 社区综合分公布所需的最少评价数；低于此数视为“样本不足”，不公布综合分（防单票虚高）
+MIN_RATINGS = 3
+
 # 允许跨域：鉴权走请求头 X-API-Key（而非 Cookie），故无需 allow_credentials；
 # 社区为公开服务，默认允许所有来源（"*"），这样前端无论托管在 CloudStudio /
 # Surge / 用户自有域名都能直接连后端，无需逐个加白名单。
@@ -375,9 +378,16 @@ def model_detail(sid: str, _: None = Depends(guard)):
     C = 5.0
     M = g["avg_rating"] or 0.0
     n = rstats["count"]
-    rstats["bayes"] = (
-        round((C * M + rstats["avg"] * n) / (C + n), 2) if n else round(sub.get("score", 0), 2)
-    )
+    if n >= MIN_RATINGS:
+        bayes = round((C * M + rstats["avg"] * n) / (C + n), 2)
+        rstats["bayes"] = bayes
+        rstats["community_rating"] = bayes
+        rstats["insufficient"] = False
+    else:
+        # 样本不足：不公布综合分，前端显示“样本不足”，避免单票/少数票虚高
+        rstats["bayes"] = None
+        rstats["community_rating"] = None
+        rstats["insufficient"] = True
     rstats["printability"] = sub.get("score", 0)
     return JSONResponse({"submission": sub, "comments": comments, "rating": rstats, "global": g})
 
@@ -414,8 +424,10 @@ async def rate_model(
         raise HTTPException(status_code=400, detail="评分需填写昵称（不可匿名）")
     if not (1 <= stars <= 5):
         raise HTTPException(status_code=400, detail="星级需在 1–5 之间")
-    if len(review) < 10:
-        raise HTTPException(status_code=400, detail="评价至少 10 个字，说说打印体验或改进建议")
+    if len(review) < 15:
+        raise HTTPException(status_code=400, detail="评价至少 15 个字，说说打印体验或改进建议")
+    if stars < 3 and len(review) < 25:
+        raise HTTPException(status_code=400, detail="低于 3★ 的评分请至少写 25 字说明原因")
     if not db.get_submission(sid):
         raise HTTPException(status_code=404, detail="模型不存在")
     db.add_rating(sid=sid, author=author, stars=stars, review=review)
@@ -440,7 +452,8 @@ def scoreboard(limit: int = 12, sort: str = "community", _: None = Depends(guard
         it["rating_count"] = rs["count"]
         it["community_rating"] = (
             round((C * M + rs["avg"] * rs["count"]) / (C + rs["count"]), 2)
-            if rs["count"] else round(it["score"], 2)
+            if rs["count"] >= MIN_RATINGS
+            else None
         )
     if sort == "printability":
         ranked = sorted(items, key=lambda x: x["score"], reverse=True)

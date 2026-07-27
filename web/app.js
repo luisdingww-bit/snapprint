@@ -14,6 +14,9 @@ const fmtTime = (ts) =>
 const scoreClass = (s) => (s >= 80 ? "score-ok" : s >= 60 ? "score-mid" : "score-bad");
 const scoreColor = (s) => (s >= 80 ? "var(--accent-2)" : s >= 60 ? "var(--warn)" : "var(--bad)");
 
+let selectedStars = 0; // 当前选中的评分星级
+let currentBoardSort = "community"; // 榜单排序维度
+
 const API_BASE = (window.SNAPRINT_CONFIG && window.SNAPRINT_CONFIG.API_BASE) || "";
 
 async function api(path, opts) {
@@ -145,13 +148,15 @@ async function loadGallery() {
 
 // ---------- 详情 + 评论 ----------
 async function openDetail(id) {
-  const { submission, comments } = await api(`/api/models/${id}`);
+  const { submission, comments, rating } = await api(`/api/models/${id}`);
+  selectedStars = 0;
   const body = $("#detailBody");
-  const size = submission.report.size_mm || [];
+  const fallback = { count: 0, avg: 0, dist: {}, printability: submission.score };
   body.innerHTML = `
     <h2>${esc(submission.filename)}</h2>
     <div class="muted small">@${esc(submission.author || "匿名")} · ${fmtTime(submission.created_at)}</div>
     <div class="report">${buildReport(submission.report, submission)}</div>
+    ${buildRating(rating || fallback, submission)}
     <div class="comments">
       <h3 style="margin:0 0 8px">社区评论 (${comments.length})</h3>
       <div id="clist">${comments
@@ -166,8 +171,97 @@ async function openDetail(id) {
         <button class="btn primary" id="cSend">发送</button>
       </div>
     </div>`;
-  $("#cSend").addEventListener("click", () => sendComment(id));
+  $$("#rateStars .star", body).forEach((sp) =>
+    sp.addEventListener("click", () => {
+      selectedStars = +sp.dataset.s;
+      $$("#rateStars .star", body).forEach((x) =>
+        x.classList.toggle("on", +x.dataset.s <= selectedStars)
+      );
+    })
+  );
+  $("#rateSend", body).addEventListener("click", () => sendRating(id));
+  $("#cSend", body).addEventListener("click", () => sendComment(id));
   $("#detail").classList.remove("hidden");
+}
+
+// 社区评分面板（均值 + 星级分布 + 洞察 + 评分表单）
+function buildRating(rating, sub) {
+  const avg = rating.avg || 0;
+  const cnt = rating.count || 0;
+  const dist = rating.dist || {};
+  const bars = [5, 4, 3, 2, 1]
+    .map((s) => {
+      const n = dist[String(s)] || 0;
+      const pct = cnt ? (n / cnt) * 100 : 0;
+      return `<div class="dist-row"><span>${s}★</span>
+        <div class="dist-track"><div class="dist-fill" style="width:${pct}%"></div></div>
+        <span>${n}</span></div>`;
+    })
+    .join("");
+  const p = rating.printability != null ? rating.printability : (sub && sub.score) || 0;
+  const verdict =
+    p >= 80 ? "推荐直接打印" : p >= 60 ? "打印可行，注意支撑" : "打印难度较高，建议先优化模型";
+  const insight = cnt
+    ? `社区评分 ${avg.toFixed(1)}★（${cnt} 人评） · 可打印性 ${p} · ${verdict}`
+    : `还没有评分 · 可打印性 ${p}（等你来评）`;
+  const bayesTxt = rating.bayes != null ? rating.bayes : "—";
+  return `
+    <div class="rating-panel">
+      <h3 style="margin:0 0 8px">社区评分 <span class="muted small">（1–5 星 + 文字评价，每作者限评一次）</span></h3>
+      <div class="rating-summary">
+        <div class="rating-avg ${scoreClass(p)}">${cnt ? avg.toFixed(1) : "—"}<span class="small">★</span></div>
+        <div class="rating-meta">
+          <div class="muted small">${cnt ? cnt + " 人评价" : "还没有评价"} · 贝叶斯调整分 ${bayesTxt}</div>
+          <div class="dist">${bars}</div>
+        </div>
+      </div>
+      <div class="muted small" style="margin:8px 0">${insight}</div>
+      <div class="rating-form">
+        <div class="stars" id="rateStars">
+          ${[1, 2, 3, 4, 5].map((s) => `<span class="star" data-s="${s}">★</span>`).join("")}
+        </div>
+        <input id="rateAuthor" placeholder="昵称（必填，不可匿名）" maxlength="24" />
+        <textarea id="rateReview" placeholder="说说你的打印体验或改进建议（至少 10 字）" maxlength="500"></textarea>
+        <button class="btn primary" id="rateSend">提交评分</button>
+        <span id="rateMsg" class="msg small"></span>
+      </div>
+    </div>`;
+}
+
+async function sendRating(id) {
+  const author = $("#rateAuthor").value.trim();
+  const review = $("#rateReview").value.trim();
+  const msg = $("#rateMsg");
+  msg.className = "msg small";
+  msg.textContent = "";
+  if (!selectedStars) {
+    msg.className = "msg small err";
+    msg.textContent = "请先点选 1–5 星";
+    return;
+  }
+  if (!author) {
+    msg.className = "msg small err";
+    msg.textContent = "昵称必填（不可匿名）";
+    return;
+  }
+  if (review.length < 10) {
+    msg.className = "msg small err";
+    msg.textContent = "评价至少 10 个字";
+    return;
+  }
+  try {
+    await api(`/api/models/${id}/rate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ author, stars: String(selectedStars), review }),
+    });
+    await openDetail(id);
+    await loadStats();
+    await loadBoard(currentBoardSort);
+  } catch (e) {
+    msg.className = "msg small err";
+    msg.textContent = "✕ " + e.message;
+  }
 }
 
 async function sendComment(id) {
@@ -410,6 +504,53 @@ async function submitShape() {
   }
 }
 
+// ---------- 社区统计 / 榜单 ----------
+async function loadStats() {
+  try {
+    const g = await api("/api/stats");
+    const top = g.top_authors && g.top_authors[0] ? g.top_authors[0].author : "—";
+    const avgTxt = g.avg_rating ? g.avg_rating.toFixed(1) + "★" : "—";
+    $("#statsStrip").innerHTML = `
+      <div class="stat"><b>${g.total_submissions}</b><span>作品</span></div>
+      <div class="stat"><b>${g.total_ratings}</b><span>评价</span></div>
+      <div class="stat"><b>${avgTxt}</b><span>平均社区评分</span></div>
+      <div class="stat"><b>${esc(top)}</b><span>最活跃评价者</span></div>`;
+  } catch (e) {
+    /* 后端离线时静默 */
+  }
+}
+
+async function loadBoard(sort) {
+  currentBoardSort = sort || currentBoardSort;
+  try {
+    const { items } = await api(`/api/scoreboard?sort=${currentBoardSort}&limit=20`);
+    $("#boardList").innerHTML = items
+      .map(
+        (it, i) => `
+        <li class="board-item" data-id="${esc(it.id)}">
+          <span class="rank">${i + 1}</span>
+          <div class="bi-main">
+            <div class="bi-name">${esc(it.filename)}</div>
+            <div class="muted small">@${esc(it.author || "匿名")}</div>
+          </div>
+          <div class="bi-score">
+            ${
+              currentBoardSort === "printability"
+                ? `<span class="score-badge ${scoreClass(it.score)}">${it.score}</span>`
+                : `<b>${it.community_rating != null ? it.community_rating.toFixed(1) : "—"}★</b><span class="muted small">（${it.rating_count || 0} 评）</span>`
+            }
+          </div>
+        </li>`
+      )
+      .join("");
+    $$(".board-item", $("#boardList")).forEach((t) =>
+      t.addEventListener("click", () => openDetail(t.dataset.id))
+    );
+  } catch (e) {
+    /* 离线静默 */
+  }
+}
+
 // ---------- 初始化 ----------
 (async function init() {
   setupDropzone();
@@ -431,4 +572,13 @@ async function submitShape() {
   } catch (e) {
     $("#galleryEmpty").textContent = "社区后端未连接，画廊暂不可用。";
   }
+  try { await loadStats(); } catch (e) {}
+  try { await loadBoard("community"); } catch (e) {}
+  $$("#boardSort button").forEach((b) =>
+    b.addEventListener("click", () => {
+      $$("#boardSort button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      loadBoard(b.dataset.sort);
+    })
+  );
 })();

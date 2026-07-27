@@ -51,8 +51,19 @@ def init() -> None:
             created_at    REAL,
             FOREIGN KEY(submission_id) REFERENCES submissions(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS ratings (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            submission_id TEXT NOT NULL,
+            author        TEXT NOT NULL,
+            stars         INTEGER NOT NULL CHECK(stars BETWEEN 1 AND 5),
+            review        TEXT NOT NULL,
+            created_at    REAL,
+            UNIQUE(submission_id, author),
+            FOREIGN KEY(submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+        );
         CREATE INDEX IF NOT EXISTS idx_sub_created ON submissions(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_com_sub ON comments(submission_id);
+        CREATE INDEX IF NOT EXISTS idx_rate_sub ON ratings(submission_id);
         """
     )
     c.commit()
@@ -156,3 +167,65 @@ def count_comments(sid: str) -> int:
     ).fetchone()[0]
     c.close()
     return n
+
+
+# ---------------------------------------------------------------------------
+# 社区评分（用户星级 + 文字评价；每作者对同一作品限评一次，重复提交覆盖）
+# ---------------------------------------------------------------------------
+def add_rating(*, sid: str, author: str, stars: int, review: str) -> None:
+    """提交/更新某作者对该作品的评分（UNIQUE(submission_id,author) 自动 upsert）。"""
+    init()
+    c = _connect()
+    c.execute(
+        """
+        INSERT INTO ratings (submission_id, author, stars, review, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(submission_id, author) DO UPDATE SET
+            stars=excluded.stars, review=excluded.review, created_at=excluded.created_at
+        """,
+        (sid, author, int(stars), review, time.time()),
+    )
+    c.commit()
+    c.close()
+
+
+def get_rating_stats(sid: str) -> dict:
+    """某作品的评分聚合：计数、均值、星级分布（含每星人数）。"""
+    init()
+    c = _connect()
+    rows = c.execute(
+        "SELECT stars, COUNT(*) AS n FROM ratings WHERE submission_id=? GROUP BY stars",
+        (sid,),
+    ).fetchall()
+    c.close()
+    dist = {str(k): 0 for k in (5, 4, 3, 2, 1)}
+    total = 0
+    ssum = 0
+    for r in rows:
+        s = int(r["stars"])
+        n = int(r["n"])
+        dist[str(s)] = n
+        total += n
+        ssum += s * n
+    avg = round(ssum / total, 2) if total else 0.0
+    return {"count": total, "avg": avg, "dist": dist}
+
+
+def global_rating_stats() -> dict:
+    """社区全局评分统计：总作品、总评价、全局平均评分、最活跃评价者。"""
+    init()
+    c = _connect()
+    total_sub = c.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
+    total_rate = c.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
+    row = c.execute("SELECT AVG(stars) AS m FROM ratings").fetchone()
+    avg = round(row["m"], 2) if row["m"] is not None else 0.0
+    top = c.execute(
+        "SELECT author, COUNT(*) AS n FROM ratings GROUP BY author ORDER BY n DESC LIMIT 5"
+    ).fetchall()
+    c.close()
+    return {
+        "total_submissions": total_sub,
+        "total_ratings": total_rate,
+        "avg_rating": avg,
+        "top_authors": [{"author": r["author"], "count": r["n"]} for r in top],
+    }

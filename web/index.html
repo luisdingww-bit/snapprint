@@ -23,6 +23,8 @@
     </nav>
   </header>
 
+  <div id="statsStrip" class="stats-strip"></div>
+
   <main>
     <!-- 照片 → 可打印 3D 生成 -->
     <section id="generate" class="card">
@@ -113,6 +115,18 @@
       <div id="uploadMsg" class="msg"></div>
 
       <div id="result"></div>
+    </section>
+
+    <!-- 社区榜单 -->
+    <section id="board" class="card">
+      <div class="gallery-head">
+        <h2>🏆 社区榜单</h2>
+        <div class="seg" id="boardSort">
+          <button type="button" data-sort="community" class="on">社区评分</button>
+          <button type="button" data-sort="printability">可打印性</button>
+        </div>
+      </div>
+      <ol id="boardList" class="board-list"></ol>
     </section>
 
     <!-- 画廊 -->

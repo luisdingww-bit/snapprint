@@ -9,10 +9,12 @@
   GET  /api/shapes                内置模型实例库（16 款参数化真 3D 几何）
   POST /api/shapes/{id}/generate  一键生成模型实例，分析后入画廊
   GET  /api/gallery               画廊列表（分页，按时间倒序）
-  GET  /api/models/{id}           模型详情 = 分析报告 + 评论
+  GET  /api/models/{id}           模型详情 = 分析报告 + 评论 + 社区评分统计
   POST /api/models/{id}/comments  发表评论
+  POST /api/models/{id}/rate      社区评分（1–5 星 + 必填文字，每作者限评一次）
   GET  /api/presets               打印机 / 材料预设（前端下拉用）
-  GET  /api/scoreboard            可打印性评分排行榜（可选）
+  GET  /api/scoreboard            排行榜（sort=community|printability）
+  GET  /api/stats                 社区全局统计（顶部数据条用）
   GET  /outputs/*                 下载上传的模型原文件
 
 安全（可选，沿用 v0.5.0 优化）：
@@ -362,12 +364,20 @@ def gallery(limit: int = 24, offset: int = 0, _: None = Depends(guard)):
 
 @app.get("/api/models/{sid}")
 def model_detail(sid: str, _: None = Depends(guard)):
-    """模型详情 = 分析报告 + 评论。"""
+    """模型详情 = 分析报告 + 评论 + 社区评分统计（含贝叶斯调整分）。"""
     sub = db.get_submission(sid)
     if not sub:
         raise HTTPException(status_code=404, detail="模型不存在")
     comments = db.list_comments(sid)
-    return JSONResponse({"submission": sub, "comments": comments})
+    rstats = db.get_rating_stats(sid)
+    g = db.global_rating_stats()
+    # 贝叶斯调整分（IMDB 式）：样本少时向全局均值收敛，防刷分虚高
+    C = 5.0
+    M = g["avg_rating"] or 0.0
+    n = rstats["count"]
+    rstats["bayes"] = round((C * M + rstats["avg"] * n) / (C + n), 2) if n else round(M, 2)
+    rstats["printability"] = sub.get("score", 0)
+    return JSONResponse({"submission": sub, "comments": comments, "rating": rstats, "global": g})
 
 
 @app.post("/api/models/{sid}/comments")
@@ -387,6 +397,29 @@ async def post_comment(
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/models/{sid}/rate")
+async def rate_model(
+    sid: str,
+    author: str = Form(""),
+    stars: int = Form(0),
+    review: str = Form(""),
+    _: None = Depends(guard),
+):
+    """社区评分：1–5 星 + 必填文字评价（每作者限评一次，重复提交覆盖）。"""
+    author = (author or "").strip()
+    review = (review or "").strip()
+    if not author or author == "匿名":
+        raise HTTPException(status_code=400, detail="评分需填写昵称（不可匿名）")
+    if not (1 <= stars <= 5):
+        raise HTTPException(status_code=400, detail="星级需在 1–5 之间")
+    if len(review) < 10:
+        raise HTTPException(status_code=400, detail="评价至少 10 个字，说说打印体验或改进建议")
+    if not db.get_submission(sid):
+        raise HTTPException(status_code=404, detail="模型不存在")
+    db.add_rating(sid=sid, author=author, stars=stars, review=review)
+    return JSONResponse({"ok": True, "rating": db.get_rating_stats(sid)})
+
+
 @app.get("/api/presets")
 def presets(_: None = Depends(guard)):
     """打印机 / 材料预设（前端下拉用）。"""
@@ -394,11 +427,29 @@ def presets(_: None = Depends(guard)):
 
 
 @app.get("/api/scoreboard")
-def scoreboard(limit: int = 12, _: None = Depends(guard)):
-    """可打印性评分排行榜（社区「最省心模型」）。"""
+def scoreboard(limit: int = 12, sort: str = "community", _: None = Depends(guard)):
+    """社区排行榜。sort=community（默认）按贝叶斯社区评分；sort=printability 按自动可打印性分。"""
     items, _ = db.list_submissions(limit=min(limit, 100), offset=0)
-    ranked = sorted(items, key=lambda x: x["score"], reverse=True)
-    return JSONResponse({"items": ranked})
+    g = db.global_rating_stats()
+    C = 5.0
+    M = g["avg_rating"] or 0.0
+    for it in items:
+        rs = db.get_rating_stats(it["id"])
+        it["rating_count"] = rs["count"]
+        it["community_rating"] = (
+            round((C * M + rs["avg"] * rs["count"]) / (C + rs["count"]), 2) if rs["count"] else round(M, 2)
+        )
+    if sort == "printability":
+        ranked = sorted(items, key=lambda x: x["score"], reverse=True)
+    else:
+        ranked = sorted(items, key=lambda x: x["community_rating"], reverse=True)
+    return JSONResponse({"items": ranked, "sort": sort, "global": g})
+
+
+@app.get("/api/stats")
+def stats(_: None = Depends(guard)):
+    """社区全局统计（顶部数据条用）。"""
+    return JSONResponse(db.global_rating_stats())
 
 
 @app.get("/api/health")

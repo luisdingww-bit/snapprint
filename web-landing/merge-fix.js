@@ -19,6 +19,37 @@
     "模型库": "#gallery-sec",
     "高斯泼溅": "#gs-sec",
   };
+  // 打印时隐藏的悬浮/装饰元素（配合 index.html 里的 @media print 双保险；
+  // 解决 Chromium 对 position:fixed 元素在打印时重复输出的问题）
+  var PRINT_HIDE_SELECTORS = [
+    "header",
+    ".nav-glass",
+    "nav",
+    "video",
+    ".video-veil",
+    ".reveal-curtain",
+    ".to-top-btn",
+    ".scroll-hint",
+    ".section-sep",
+    ".mobile-overlay",
+    '[aria-label="Toggle menu"]',
+  ];
+  var _printHidden = new Map();
+  window.addEventListener("beforeprint", function () {
+    _printHidden.clear();
+    PRINT_HIDE_SELECTORS.forEach(function (sel) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        _printHidden.set(el, el.style.display);
+        el.style.display = "none";
+      });
+    });
+  });
+  window.addEventListener("afterprint", function () {
+    _printHidden.forEach(function (oldDisplay, el) {
+      el.style.display = oldDisplay || "";
+    });
+    _printHidden.clear();
+  });
 
   function findFrame() {
     return document.querySelector('iframe[title="SnapPrint 工作台"]');

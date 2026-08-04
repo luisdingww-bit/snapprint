@@ -32,6 +32,32 @@
     </svg>
     <script type="module" crossorigin src="/assets/index-DQ1SJwtG.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-gM6heV6W.css">
+    <style>
+      /* 打印优化：深色视频首屏在纸上改为浅色可读布局 */
+      @media print {
+        :root {
+          --c-bg: #ffffff;
+          --c-surface: #f4f4f5;
+          --c-surface-hover: #ececee;
+          --c-border: #dddddd;
+          --c-border-hover: #bbbbbb;
+          --c-text: #1a1a1f;
+          --c-text-muted: #555555;
+          --c-accent: #9a6b2f;
+          --c-accent-light: #b08030;
+          --c-white: #ffffff;
+          --glow-accent: none;
+        }
+        html, body { background: #ffffff !important; }
+        video, .video-veil, .reveal-curtain, .to-top-btn, .scroll-hint,
+        .section-sep, .mobile-overlay, [aria-label="Toggle menu"],
+        header, .nav-glass, nav { display: none !important; }
+        main { overflow: visible !important; }
+        main.h-screen { height: auto !important; }
+        iframe { max-height: none !important; }
+        .pill-btn { border-color: #cccccc !important; }
+      }
+    </style>
     <!-- 滚动合并：内嵌工作台跟随整页统一滚动（同源副本 + 高度自适应） -->
     <script src="./merge-fix.js" defer></script>
   </head>

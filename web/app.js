@@ -345,15 +345,19 @@ function setupDropzone() {
 
 async function setupPresets() {
   const { printers, materials } = await api("/api/presets");
-  const ps = $("#printer"), ms = $("#material");
-  printers.forEach((p) => {
-    const o = document.createElement("option");
-    o.value = p.id; o.textContent = p.name; ps.appendChild(o);
-  });
-  materials.forEach((m) => {
-    const o = document.createElement("option");
-    o.value = m.id; o.textContent = m.name; ms.appendChild(o);
-  });
+  const fill = (printerSel, materialSel) => {
+    printers.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name; printerSel.appendChild(o);
+    });
+    materials.forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m.id; o.textContent = m.name; materialSel.appendChild(o);
+    });
+  };
+  // 同时填充上传区与照片生成区的下拉框，避免重复请求
+  fill($("#printer"), $("#material"));
+  fill($("#genPrinter"), $("#genMaterial"));
 }
 
 async function submitUpload() {
@@ -426,19 +430,7 @@ async function setupGenerate() {
     /* 后端离线时下拉仅保留默认浮雕项，无伤大雅 */
   }
 
-  // 复用上传区的打印机/材料预设
-  try {
-    const { printers, materials } = await api("/api/presets");
-    const ps = $("#genPrinter"), ms = $("#genMaterial");
-    printers.forEach((p) => {
-      const o = document.createElement("option");
-      o.value = p.id; o.textContent = p.name; ps.appendChild(o);
-    });
-    materials.forEach((m) => {
-      const o = document.createElement("option");
-      o.value = m.id; o.textContent = m.name; ms.appendChild(o);
-    });
-  } catch (e) { /* ignore */ }
+  // 打印机/材料预设由 setupPresets() 统一加载（避免重复请求）
 
   $("#genSubmit").addEventListener("click", submitGenerate);
 }
@@ -602,21 +594,18 @@ async function loadBoard(sort) {
   $("#detail").addEventListener("click", (e) => {
     if (e.target.id === "detail") $("#detail").classList.add("hidden");
   });
-  await checkBackend();
+  // 独立数据请求并行发出，互不阻塞；后端离线时各区块自行降级
+  await Promise.allSettled([
+    checkBackend(),
+    setupPresets().catch(() => {}),
+    loadGallery().catch(() => {
+      $("#galleryEmpty").textContent = "社区后端未连接，画廊暂不可用。";
+    }),
+    loadStats().catch(() => {}),
+    loadBoard("community").catch(() => {}),
+  ]);
   // 后端（Railway 免费版）可能休眠后冷启动，定时复检：回暖后横幅自动消失
   setInterval(checkBackend, 15000);
-  try {
-    await setupPresets();
-  } catch (e) {
-    /* 后端离线时预设加载失败无关紧要，横幅已提示 */
-  }
-  try {
-    await loadGallery();
-  } catch (e) {
-    $("#galleryEmpty").textContent = "社区后端未连接，画廊暂不可用。";
-  }
-  try { await loadStats(); } catch (e) {}
-  try { await loadBoard("community"); } catch (e) {}
   $$("#boardSort button").forEach((b) =>
     b.addEventListener("click", () => {
       $$("#boardSort button").forEach((x) => x.classList.remove("on"));

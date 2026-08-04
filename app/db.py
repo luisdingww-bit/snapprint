@@ -80,7 +80,6 @@ def add_submission(
     model_path: str,
     report: dict,
 ) -> None:
-    init()
     c = _connect()
     c.execute(
         """
@@ -105,7 +104,6 @@ def add_submission(
 
 
 def list_submissions(limit: int = 24, offset: int = 0) -> tuple[list[dict], int]:
-    init()
     c = _connect()
     rows = c.execute(
         """
@@ -120,8 +118,28 @@ def list_submissions(limit: int = 24, offset: int = 0) -> tuple[list[dict], int]
     return [dict(r) for r in rows], total
 
 
+def list_submissions_with_ratings(limit: int = 100, offset: int = 0) -> list[dict]:
+    """画廊条目 + 评分聚合（一次查询，避免排行榜 N+1 请求）。"""
+    c = _connect()
+    rows = c.execute(
+        """
+        SELECT s.id, s.filename, s.author, s.ext, s.size_bytes, s.score, s.created_at,
+               (SELECT COUNT(*) FROM comments c WHERE c.submission_id = s.id) AS comments,
+               COUNT(r.id) AS rating_count,
+               AVG(r.stars) AS rating_avg
+        FROM submissions s
+        LEFT JOIN ratings r ON r.submission_id = s.id
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
+        LIMIT ? OFFSET ?
+        """,
+        (limit, offset),
+    ).fetchall()
+    c.close()
+    return [dict(r) for r in rows]
+
+
 def get_submission(sid: str) -> dict | None:
-    init()
     c = _connect()
     r = c.execute("SELECT * FROM submissions WHERE id=?", (sid,)).fetchone()
     c.close()
@@ -133,7 +151,6 @@ def get_submission(sid: str) -> dict | None:
 
 
 def add_comment(*, sid: str, author: str, body: str) -> int:
-    init()
     c = _connect()
     cur = c.execute(
         "INSERT INTO comments (submission_id, author, body, created_at) VALUES (?, ?, ?, ?)",
@@ -146,7 +163,6 @@ def add_comment(*, sid: str, author: str, body: str) -> int:
 
 
 def list_comments(sid: str) -> list[dict]:
-    init()
     c = _connect()
     rows = c.execute(
         """
@@ -160,7 +176,6 @@ def list_comments(sid: str) -> list[dict]:
 
 
 def count_comments(sid: str) -> int:
-    init()
     c = _connect()
     n = c.execute(
         "SELECT COUNT(*) FROM comments WHERE submission_id=?", (sid,)
@@ -174,7 +189,6 @@ def count_comments(sid: str) -> int:
 # ---------------------------------------------------------------------------
 def add_rating(*, sid: str, author: str, stars: int, review: str) -> None:
     """提交/更新某作者对该作品的评分（UNIQUE(submission_id,author) 自动 upsert）。"""
-    init()
     c = _connect()
     c.execute(
         """
@@ -191,7 +205,6 @@ def add_rating(*, sid: str, author: str, stars: int, review: str) -> None:
 
 def get_rating_stats(sid: str) -> dict:
     """某作品的评分聚合：计数、均值、中位数、标准差、4★+ 占比、星级分布。"""
-    init()
     c = _connect()
     rows = c.execute(
         "SELECT stars FROM ratings WHERE submission_id=?", (sid,)
@@ -230,7 +243,6 @@ def get_rating_stats(sid: str) -> dict:
 
 def global_rating_stats() -> dict:
     """社区全局评分统计：总作品、总评价、全局平均/中位数/标准差评分、最活跃评价者。"""
-    init()
     c = _connect()
     total_sub = c.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
     rows = c.execute("SELECT stars FROM ratings").fetchall()

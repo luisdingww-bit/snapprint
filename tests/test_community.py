@@ -92,6 +92,21 @@ def test_presets_and_scoreboard(client):
     assert sb["items"][0]["score"] >= 0
 
 
+def test_scoreboard_community_handles_unrated_models(client):
+    """社区榜存在 0 评分模型时不应 500（回归：None 参与 sorted 会抛 TypeError）。"""
+    for name in ("a.stl", "b.stl"):
+        data = _stl(trimesh.creation.box(extents=(40, 30, 20)))
+        r = client.post(
+            "/api/upload", files={"file": (name, data, "application/octet-stream")}
+        )
+        assert r.status_code == 200
+    r = client.get("/api/scoreboard?sort=community")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 2
+    assert all(it["community_rating"] is None for it in items)
+
+
 def test_guard_api_key(client, monkeypatch):
     monkeypatch.setattr(main, "API_KEY", "secret")
     data = _stl(trimesh.creation.box())

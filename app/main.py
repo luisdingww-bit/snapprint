@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -43,7 +44,14 @@ OUTPUTS = ROOT / "outputs"
 UPLOADS = OUTPUTS / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.8.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """启动时初始化数据库（避免每个请求重复执行建表 DDL）。"""
+    db.init()
+    yield
+
+
+app = FastAPI(title="SnapPrint · 咔印3D 社区", version="0.8.0", lifespan=lifespan)
 
 # 社区综合分公布所需的最少评价数；低于此数视为“样本不足”，不公布综合分（防单票虚高）
 MIN_RATINGS = 3
@@ -443,22 +451,29 @@ def presets(_: None = Depends(guard)):
 @app.get("/api/scoreboard")
 def scoreboard(limit: int = 12, sort: str = "community", _: None = Depends(guard)):
     """社区排行榜。sort=community（默认）按贝叶斯社区评分；sort=printability 按自动可打印性分。"""
-    items, _ = db.list_submissions(limit=min(limit, 100), offset=0)
+    items = db.list_submissions_with_ratings(limit=min(limit, 100))
     g = db.global_rating_stats()
     C = 5.0
     M = g["avg_rating"] or 0.0
     for it in items:
-        rs = db.get_rating_stats(it["id"])
-        it["rating_count"] = rs["count"]
+        rs_count = it.pop("rating_count", 0)
+        rs_avg = it.pop("rating_avg", 0.0) or 0.0
+        it["rating_count"] = rs_count
         it["community_rating"] = (
-            round((C * M + rs["avg"] * rs["count"]) / (C + rs["count"]), 2)
-            if rs["count"] >= MIN_RATINGS
+            round((C * M + rs_avg * rs_count) / (C + rs_count), 2)
+            if rs_count >= MIN_RATINGS
             else None
         )
     if sort == "printability":
         ranked = sorted(items, key=lambda x: x["score"], reverse=True)
     else:
-        ranked = sorted(items, key=lambda x: x["community_rating"], reverse=True)
+        ranked = sorted(
+            items,
+            key=lambda x: x["community_rating"]
+            if x["community_rating"] is not None
+            else -1.0,
+            reverse=True,
+        )
     return JSONResponse({"items": ranked, "sort": sort, "global": g})
 
 
@@ -477,8 +492,22 @@ def health():
 # 静态下载上传的模型原文件（注册在前，优先级高于根 "/" 挂载）
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
 
+class CacheStaticFiles(StaticFiles):
+    """静态资源缓存策略：CSS/JS 缓存 1 小时，HTML 走 no-cache 重验证。"""
+
+    ASSET_EXTS = {".css", ".js"}
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        if Path(scope.get("path", "")).suffix.lower() in self.ASSET_EXTS:
+            response.headers.setdefault("Cache-Control", "public, max-age=3600")
+        else:
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
 # 纯静态前端：与 surge 线上 Demo 共用同一份 web/。
-app.mount("/", StaticFiles(directory=str(WEB), html=True), name="web")
+app.mount("/", CacheStaticFiles(directory=str(WEB), html=True), name="web")
 
 
 if __name__ == "__main__":

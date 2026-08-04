@@ -1,12 +1,21 @@
 """内置模型实例库（app/shapes.py + /api/shapes*）测试。"""
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app import db
 from app.main import app
 from app.shapes import SHAPES, build
 
+# 模拟生产环境 lifespan 启动时的数据库初始化（落到临时目录，避免污染仓库 data/）
+_tmp_data = Path(tempfile.mkdtemp(prefix="snapprint-test-"))
+db.DATA_DIR = _tmp_data
+db.DB_PATH = _tmp_data / "snapprint.db"
+db.init()
 client = TestClient(app)
 
 

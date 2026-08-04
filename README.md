@@ -111,6 +111,7 @@ snapprint/
 │   ├── postprocess.py   # 网格后处理工具（水密/缩放/统计）
 │   └── db.py            # 社区数据层（零依赖 SQLite：模型 + 评论）
 ├── web/                 # 简洁单页前端：上传 → 画廊 → 详情 → 评论
+├── web-landing/         # 品牌着陆页 + 图生3D 创作工具（mainframe-hero.surge.sh，两段合一滚动版）
 ├── scripts/             # start_backend.py 启动脚本
 ├── docs/                # 部署文档
 ├── data/                # SQLite 社区数据库（运行时生成，已 gitignore）

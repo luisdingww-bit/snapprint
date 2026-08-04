@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="api-base" content="" />
+  <title>SnapPrint · 咔印3D — 照片转可打印 3D 模型（纯浏览器版）</title>
+  <meta name="description" content="上传一张照片，浏览器里直接生成水密可打印的 3D 浮雕模型，导出 STL/OBJ/PLY/GLB。零安装、零后端、开源 Apache-2.0。" />
+  <style>
+    :root{
+      --orange:#fa6831; --orange-dark:#e5551f; --orange-soft:#fff1ea;
+      --bg:#f5f5f7; --card:#ffffff; --line:#e6e6ea;
+      --txt:#1c1c1e; --muted:#8a8a93; --green:#12a854; --blue:#2e6fd8;
+      --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
+      --shadow-hover:0 6px 22px rgba(0,0,0,.12);
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;font-family:"Inter",-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+      background:var(--bg);color:var(--txt);line-height:1.6}
+
+    /* ── 顶部导航（Printables 风格：白底 sticky + 橙色 CTA） ── */
+    .nav{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);
+      box-shadow:0 1px 2px rgba(0,0,0,.03)}
+    .nav-in{max-width:1200px;margin:0 auto;padding:0 24px;height:60px;
+      display:flex;align-items:center;gap:26px}
+    .logo{display:flex;align-items:center;gap:9px;font-size:20px;font-weight:800;
+      letter-spacing:.2px;text-decoration:none;color:var(--txt)}
+    .logo .mark{width:30px;height:30px;border-radius:8px;background:var(--orange);
+      display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:900}
+    .logo b{color:var(--orange)}
+    .nav-links{display:flex;gap:22px;font-size:14px;font-weight:600}
+    .nav-links a{color:var(--txt);text-decoration:none;padding:6px 2px;border-bottom:2px solid transparent}
+    .nav-links a:hover{color:var(--orange);border-bottom-color:var(--orange)}
+    .nav .cta{margin-left:auto;background:var(--orange);color:#fff;text-decoration:none;
+      font-size:13px;font-weight:700;letter-spacing:.4px;padding:9px 18px;border-radius:8px;
+      transition:.15s}
+    .nav .cta:hover{background:var(--orange-dark)}
+    .nav .lang{margin-right:10px;font-size:12px;font-weight:700;color:var(--muted);
+      text-decoration:none;padding:7px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+    .nav .lang:hover{color:var(--orange);border-color:var(--orange)}
+    @media(max-width:720px){.nav-links{display:none}}
+
+    /* ── Hero 横幅 ── */
+    .hero{background:linear-gradient(120deg,#fff4ee 0%,#ffe8dc 55%,#ffddc9 100%);
+      border-bottom:1px solid var(--line)}
+    .hero-in{max-width:1200px;margin:0 auto;padding:40px 24px 36px}
+    .hero h1{margin:0 0 8px;font-size:30px;line-height:1.25;letter-spacing:-.3px}
+    .hero h1 em{font-style:normal;color:var(--orange)}
+    .hero p{margin:0;font-size:15px;color:#6b6058;max-width:640px}
+    .hero .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+    .chip{background:#fff;border:1px solid #f0d9cc;color:#a05a35;font-size:12px;
+      font-weight:600;padding:4px 12px;border-radius:999px}
+
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 24px 48px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+    @media(max-width:880px){.cols{grid-template-columns:1fr}}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+      padding:22px;box-shadow:var(--shadow)}
+    h2{margin:0 0 6px;font-size:17px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+    h2 .num{width:22px;height:22px;border-radius:50%;background:var(--orange);color:#fff;
+      font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .sub{font-size:13px;color:var(--muted);margin:0 0 14px}
+
+    /* 上传区 */
+    .drop{display:block;border:2px dashed #d8d8de;border-radius:12px;padding:34px 16px;
+      text-align:center;color:var(--muted);cursor:pointer;transition:.2s;background:#fafafb}
+    .drop:hover{border-color:var(--orange);background:var(--orange-soft);color:var(--txt)}
+    .drop b{color:var(--txt)}
+    .drop input[type=file]{display:none}
+    .drop img{max-width:100%;max-height:160px;border-radius:8px;margin-top:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,.12)}
+
+    /* 模式切换（分段控件） */
+    .seg{display:flex;background:#f0f0f3;border-radius:10px;padding:4px;gap:4px;margin:4px 0 14px}
+    .seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:8px;
+      font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:.15s}
+    .seg button.on{background:#fff;color:var(--orange);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+    .mode-tip{font-size:12px;color:var(--muted);margin:-6px 0 10px}
+    .field select{width:100%;padding:9px 10px;border:1.5px solid var(--line);border-radius:9px;
+      font-size:14px;font-weight:600;color:var(--txt);background:#fff;cursor:pointer;margin-top:4px}
+    .field select:focus{outline:none;border-color:var(--orange)}
+
+    .field{margin:12px 0}
+    .field label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600}
+    .field label span{color:var(--txt)}
+    .field input[type=range]{width:100%;accent-color:var(--orange)}
+    .row{display:flex;gap:14px}
+    .row .field{flex:1}
+    .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:10px 0}
+    .chk input{accent-color:var(--orange)}
+
+    .go{width:100%;margin-top:14px;background:var(--orange);color:#fff;border:0;
+      padding:14px;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:.5px;
+      cursor:pointer;transition:.15s;box-shadow:0 3px 10px rgba(250,104,49,.3)}
+    .go:hover:not(:disabled){background:var(--orange-dark)}
+    .go:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+    /* 预览 */
+    .preview{height:330px;background:#eceef1;border-radius:12px;border:1px solid var(--line);
+      display:flex;align-items:center;justify-content:center;color:var(--muted);
+      font-size:13px;overflow:hidden;text-align:center;position:relative;touch-action:none}
+    .preview canvas{width:100%;height:100%;display:block;cursor:grab}
+    .preview canvas:active{cursor:grabbing}
+    .pv-tip{position:absolute;left:10px;bottom:8px;font-size:11px;color:#666;
+      background:rgba(255,255,255,.82);padding:2px 9px;border-radius:6px;pointer-events:none;
+      box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+    .stats{font-size:13px;margin-top:14px;background:#fafafb;border:1px solid var(--line);
+      border-radius:10px;padding:12px 14px}
+    .stats .grid{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 12px;margin-top:8px}
+    @media(max-width:520px){.stats .grid{grid-template-columns:auto 1fr}}
+    .stats .k{color:var(--muted)}
+    .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
+    .ok{background:rgba(18,168,84,.12);color:var(--green)}
+    .no{background:rgba(250,104,49,.12);color:var(--orange)}
+
+    .dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+    .dl button{background:#fff;border:1.5px solid var(--line);color:var(--txt);font-weight:600;
+      padding:9px 14px;border-radius:9px;font-size:13px;cursor:pointer;transition:.15s;
+      display:inline-flex;align-items:center;gap:6px}
+    .dl button:hover{border-color:var(--orange);color:var(--orange);background:var(--orange-soft)}
+    .dl button.primary{background:var(--orange);border-color:var(--orange);color:#fff}
+    .dl button.primary:hover{background:var(--orange-dark);color:#fff}
+
+    .hint{font-size:12px;color:var(--muted);margin-top:10px}
+
+    /* 切片就绪预设 */
+    .preset{margin-top:18px;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:#fbfbfc}
+    .preset .p-head{font-size:14px;font-weight:800;margin-bottom:10px}
+    .preset .p-head span{font-size:12px;font-weight:400;color:var(--muted);margin-left:8px}
+    .preset .p-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+    .preset select{flex:1;min-width:150px;background:#fff;border:1.5px solid var(--line);
+      border-radius:9px;padding:8px 10px;font-size:13px;color:var(--txt);cursor:pointer}
+    .preset select:hover{border-color:var(--orange)}
+    .p-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .p-chips .pc{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:999px;
+      padding:4px 11px;color:var(--txt)}
+    .p-chips .pc b{color:var(--orange)}
+    .p-support{font-size:12px;line-height:1.7;color:var(--txt);background:#fbf6f1;
+      border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-top:8px}
+    .p-support b{color:var(--orange)}
+    .p-support.ok{border-color:rgba(46,160,67,.35);background:rgba(46,160,67,.06)}
+    .p-support.warn{border-color:rgba(250,104,49,.35);background:rgba(250,104,49,.06)}
+    .p-warn{font-size:12px;font-weight:700;color:#c0392b;background:rgba(250,104,49,.08);
+      border:1px solid rgba(250,104,49,.3);border-radius:9px;padding:8px 12px;margin-top:10px}
+    .preset .dl{margin-top:12px}
+    .p-blender{margin-top:10px}
+    .p-blender button{width:100%;font:inherit;font-size:13px;font-weight:700;color:#1f6feb;
+      background:#eef4ff;border:1px solid #c5d8ff;border-radius:9px;padding:9px 12px;cursor:pointer}
+    .p-blender button:hover{background:#e2ecff}
+    .p-blender .hint{margin-top:7px}
+    .adv-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 2px;font-size:13px;color:var(--ink)}
+    .adv-row .adv-label{font-weight:700}
+    .adv-row select{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+    .adv-row .adv-note{font-size:12px;color:var(--muted)}
+    .adv-params{width:100%;display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;
+      margin-top:10px;padding:10px 12px;background:var(--orange-soft);
+      border:1px solid #f0c8b3;border-radius:10px}
+    .adv-params label{font-size:13px;color:var(--muted);font-weight:600;display:flex;
+      align-items:center;gap:7px}
+    .adv-params select,.adv-params input[type=number]{font:inherit;font-size:13px;font-weight:600;
+      padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--txt)}
+    .adv-params .chk-inline{font-weight:600;cursor:pointer}
+    .adv-params .chk-inline input{accent-color:var(--orange);margin:0}
+    .dl-backend{margin-top:14px}
+
+    .rehead{font-size:14px;font-weight:800;color:var(--orange);margin:18px 0 2px;
+      padding-top:16px;border-top:1px dashed #f0c8b3}
+    .hint a{color:var(--blue)}
+    .err{font-size:12px;color:var(--orange-dark);margin-top:10px;white-space:pre-wrap}
+    .hidden{display:none}
+
+    /* ── 模型库（Sketchfab 风格：筛选工具栏 + 缩略图卡片 + 浏览/评论/点赞统计） ── */
+    .section{margin-top:34px}
+    .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+    .sec-head h2{font-size:21px}
+    .sec-head .more{margin-left:auto;font-size:13px;font-weight:600;color:var(--orange);text-decoration:none}
+    .sec-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
+
+    /* 筛选工具栏（Sketchfab explore bar） */
+    .lib-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+      background:var(--card);border:1px solid var(--line);border-radius:12px;
+      padding:10px 12px;margin:0 0 18px;box-shadow:var(--shadow)}
+    .lib-bar .seg2{display:flex;background:#f0f0f3;border-radius:9px;padding:3px;gap:3px}
+    .lib-bar .seg2 button{border:0;background:transparent;padding:7px 12px;border-radius:7px;
+      font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;transition:.15s;white-space:nowrap}
+    .lib-bar .seg2 button.on{background:#fff;color:var(--orange);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+    .lib-bar select{padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;
+      font-size:12.5px;font-weight:600;color:var(--txt);background:#fff;cursor:pointer}
+    .lib-bar select:focus{outline:none;border-color:var(--orange)}
+    .lib-bar .search{position:relative;flex:1;min-width:150px}
+    .lib-bar .search input{width:100%;padding:8px 12px 8px 30px;border:1.5px solid var(--line);
+      border-radius:8px;font-size:13px;background:#fff}
+    .lib-bar .search input:focus{outline:none;border-color:var(--orange)}
+    .lib-bar .search::before{content:"🔍";position:absolute;left:9px;top:50%;
+      transform:translateY(-50%);font-size:12px;opacity:.55}
+    .lib-bar .feat{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;
+      color:var(--blue);background:rgba(46,111,216,.08);border:1px solid rgba(46,111,216,.25);
+      padding:7px 12px;border-radius:8px;cursor:pointer;user-select:none;white-space:nowrap}
+    .lib-bar .feat input{accent-color:var(--blue);margin:0}
+    .lib-count{font-size:12px;color:var(--muted);margin:-8px 0 12px}
+
+    .g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:16px}
+    .g-card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+      cursor:pointer;transition:.18s;position:relative;box-shadow:var(--shadow);
+      display:flex;flex-direction:column}
+    .g-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+    .g-card.active{outline:2px solid var(--orange);outline-offset:-2px}
+    .g-thumb{position:relative;background:#eceef1}
+    .g-thumb canvas{width:100%;aspect-ratio:4/3;display:block;object-fit:cover}
+    .g-thumb.dark{background:#14161c}
+    .g-card .t{position:absolute;top:8px;left:8px;font-size:10px;font-weight:700;
+      background:var(--orange);color:#fff;padding:2px 8px;border-radius:999px;letter-spacing:.3px}
+    .g-card .t.t3d{background:var(--blue)}
+    .g-card .t.tgs{background:#8a5cf6}
+    /* Sketchfab 式「可下载」角标（缩略图右上） */
+    .g-card .dlb{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:6px;
+      background:rgba(0,0,0,.5);color:#fff;font-size:13px;display:flex;align-items:center;
+      justify-content:center;backdrop-filter:blur(2px)}
+    /* 悬停出现的生成按钮（Sketchfab 缩略图 hover 交互） */
+    .g-card .go2{position:absolute;left:50%;bottom:10px;transform:translateX(-50%) translateY(6px);
+      opacity:0;background:var(--orange);border:0;color:#fff;font-weight:700;
+      padding:7px 18px;border-radius:999px;font-size:12.5px;cursor:pointer;
+      transition:.18s;letter-spacing:.3px;box-shadow:0 3px 10px rgba(0,0,0,.25);white-space:nowrap}
+    .g-card:hover .go2{opacity:1;transform:translateX(-50%) translateY(0)}
+    .g-body{padding:11px 13px 12px;display:flex;flex-direction:column;gap:3px;flex:1}
+    .g-body .n{font-size:14px;font-weight:700;letter-spacing:-.1px;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis}
+    .g-body .a{font-size:12px;color:var(--muted)}
+    .g-body .a b{color:var(--blue);font-weight:600}
+    /* Sketchfab 统计行：浏览 / 评论 / 点赞 */
+    .g-foot{display:flex;align-items:center;gap:11px;font-size:12px;color:var(--muted);
+      border-top:1px solid #f0f0f3;margin-top:8px;padding-top:8px}
+    .g-foot .st{display:inline-flex;align-items:center;gap:4px}
+    .g-foot .like{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:0;
+      background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;
+      padding:2px 6px;border-radius:6px;transition:.15s}
+    .g-foot .like:hover{background:rgba(232,68,122,.1);color:#e8447a}
+    .g-foot .like.on{color:#e8447a}
+
+    /* 社区导航卡 */
+    .comm{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+    .comm a{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--line);
+      border-radius:12px;padding:14px 16px;text-decoration:none;transition:.18s;box-shadow:var(--shadow)}
+    .comm a:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:#f0c8b3}
+    .comm .ico{width:40px;height:40px;border-radius:10px;flex:none;display:flex;align-items:center;
+      justify-content:center;font-size:18px;font-weight:800;color:#fff}
+    .comm .cn{color:var(--txt);font-size:14px;font-weight:700}
+    .comm .cd{color:var(--muted);font-size:12px;margin-top:1px}
+
+    /* 页脚 */
+    footer{border-top:1px solid var(--line);background:#fff;margin-top:20px}
+    .foot-in{max-width:1200px;margin:0 auto;padding:26px 24px;display:flex;flex-wrap:wrap;
+      gap:14px;align-items:center;font-size:13px;color:var(--muted)}
+    .foot-in a{color:var(--blue);text-decoration:none}
+    .foot-in .lic{margin-left:auto}
+  </style>
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <nav class="nav">
+    <div class="nav-in">
+      <a class="logo" href="#"><span class="mark">S</span>Snap<b>Print</b></a>
+      <div class="nav-links">
+        <a href="#make" data-i18n="navMake">创作</a>
+        <a href="#gallery-sec" data-i18n="navGallery">模型库</a>
+        <a href="#gs-sec" data-i18n="navGs">高斯泼溅</a>
+        <a href="#communities-sec" data-i18n="navComm">社区</a>
+      </div>
+      <a class="lang" id="lang-btn" href="javascript:void(0)" title="Language / 语言">EN</a>
+      <a class="cta" href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GITHUB ↗</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-in">
+      <h1 data-i18n-html="heroTitle">一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em></h1>
+      <p data-i18n="heroSub">照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入 + 3DGS 高斯泼溅五模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格或高斯点云，直接下载 STL / OBJ / PLY / GLB / .splat。</p>
+      <div class="chips">
+        <span class="chip">✓ 数据不出本机</span>
+        <span class="chip">✓ 照片浮雕</span>
+        <span class="chip">✓ 2D 轮廓拉伸</span>
+        <span class="chip">✓ 真实3D几何</span>
+        <span class="chip">✓ 导入 STL/OBJ/PLY/GLB</span>
+        <span class="chip">✓ 3DGS 高斯泼溅</span>
+        <span class="chip">✓ 水密可切片</span>
+        <span class="chip">✓ 开源 Apache-2.0</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="cols" id="make">
+      <div class="card">
+        <h2><span class="num">1</span>选择文件<span style="font-size:12px;font-weight:600;color:var(--muted)">（图片 或 3D 模型；真实3D模式无需文件）</span></h2>
+        <p class="sub">照片、Logo、剪影、手绘线稿 → 生成 3D；也可以直接上传你自己的 <b>STL / OBJ / PLY / GLB 模型</b> → 预览、按毫米缩放、转换格式下载。文件只在你的浏览器里处理，不会上传到任何服务器。</p>
+        <label class="drop" id="drop">
+          点击选择，或把文件拖到这里<br><b>图片 JPG / PNG · 模型 STL / OBJ / PLY / GLB</b>
+          <input type="file" id="file" accept="image/*,.stl,.obj,.ply,.glb" />
+        </label>
+
+        <h2 style="margin-top:22px"><span class="num">2</span>生成模式 &amp; 参数（毫米）</h2>
+        <div id="panel-top"></div>
+        <div class="adv-row" id="adv-row">
+          <label class="adv-label" data-i18n="modelLabel">AI 引擎（图生3D）</label>
+          <select id="model-sel"></select>
+          <span class="adv-note" id="model-note" data-i18n="modelNote">选了引擎即走本地后端图生3D（Hunyuan3D / TripoSR / SF3D / Trellis2）</span>
+          <div class="adv-params hidden" id="adv-params">
+            <label data-i18n="remeshLabel">重网格化
+              <select id="gen-remesh">
+                <option value="none" data-i18n="remeshNone">无（原始）</option>
+                <option value="triangle" data-i18n="remeshTri">三角化</option>
+                <option value="quad" data-i18n="remeshQuad">四边形（需 pymeshlab）</option>
+              </select>
+            </label>
+            <label class="chk-inline"><input type="checkbox" id="gen-texture" /> <span data-i18n="texLabel">保留贴图</span></label>
+            <label class="chk-inline hidden" id="texres-wrap" data-i18n="texresLabel">分辨率
+              <input type="number" id="gen-texres" value="1024" min="256" max="2048" step="256" />
+            </label>
+          </div>
+        </div>
+
+        <button type="button" class="go" id="go" disabled data-i18n="goBtn">生成 3D 模型</button>
+        <div class="hint" id="status" data-i18n="statusInit">请先选择一张图片。</div>
+        <div class="err hidden" id="err"></div>
+        <div class="hint">AI 模式（Hunyuan3D / TripoSR 整体 3D）需 GPU，请
+          <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">本地部署</a>。</div>
+      </div>
+
+      <div class="card">
+        <h2><span class="num">3</span>预览 &amp; 下载</h2>
+        <p class="sub">拖拽旋转 · 滚轮缩放 · 支持触屏。</p>
+        <div class="preview" id="preview" data-i18n="previewHint">生成后在此显示可旋转的 3D 模型</div>
+        <div id="result" class="hidden">
+          <div class="stats">
+            <div>水密（可切片）：<span id="wt" class="badge"></span></div>
+            <div class="grid">
+              <div class="k">尺寸(mm)</div><div id="size">—</div>
+              <div class="k">体积(cm³)</div><div id="vol">—</div>
+              <div class="k">面数</div><div id="faces">—</div>
+              <div class="k">顶点</div><div id="verts">—</div>
+            </div>
+          </div>
+          <div class="dl" id="dl-mesh">
+            <button id="dl_stl" class="primary">⬇ STL（推荐打印）</button>
+            <button id="dl_obj">⬇ OBJ</button>
+            <button id="dl_ply">⬇ PLY（带颜色）</button>
+            <button id="dl_glb">⬇ GLB（AR/网页）</button>
+          </div>
+          <div class="dl hidden" id="dl-splat">
+            <button id="dl_gsply" class="primary">⬇ PLY（3DGS 标准）</button>
+            <button id="dl_gssplat">⬇ .splat（Web 查看器）</button>
+          </div>
+          <div class="dl hidden" id="dl-backend"></div>
+          <div class="hint" id="dl-hint">STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。</div>
+
+          <!-- 切片就绪预设：按打印机 + 材料智能推荐参数，一键导出 -->
+          <div class="preset hidden" id="preset-box">
+            <div class="p-head" data-i18n-html="presetHead">🖨 切片就绪预设<span>按你的打印机智能推荐参数</span></div>
+            <div class="p-row">
+              <select id="pr_printer" title="打印机"></select>
+              <select id="pr_mat" title="材料"></select>
+            </div>
+            <div class="p-chips" id="pr_chips"></div>
+            <div class="p-support" id="pr_support"></div>
+            <div class="p-warn hidden" id="pr_warn"></div>
+            <div class="dl">
+              <button id="pr_ini" class="primary">⬇ 预设 .ini（PrusaSlicer / Orca 可导入）</button>
+              <button id="pr_txt">⬇ 参数卡 .txt</button>
+            </div>
+            <div class="p-blender">
+              <button id="dl_blender">🧊 在 Blender 中打开（下载 OBJ）</button>
+              <div class="hint hidden" id="blender_tip">已下载 .obj，用 Blender 直接打开即可；或在 Blender 内安装 SnapPrint 插件后，可「从图片一键生成」并做支撑分析。详见 README「集成」章节。</div>
+            </div>
+          </div>
+
+          <div id="panel-bottom" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模型库（Sketchfab 风格：筛选栏 + 统一网格） -->
+    <div class="section" id="gallery-sec">
+      <div class="sec-head">
+        <h2 data-i18n="galleryTitle">模型库</h2>
+        <a class="more" href="#communities-sec" data-i18n="galleryMore">更多社区模型 →</a>
+      </div>
+      <p class="sec-sub" id="gs-sec" data-i18n="gallerySub">33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。</p>
+
+      <!-- 筛选工具栏 -->
+      <div class="lib-bar">
+        <div class="seg2" id="lib-type">
+          <button type="button" data-t="all" class="on">全部</button>
+          <button type="button" data-t="solid3d">🧊 真实3D</button>
+          <button type="button" data-t="relief">🖼 浮雕</button>
+          <button type="button" data-t="splat">✨ 高斯泼溅</button>
+        </div>
+        <select id="lib-cat"><option value="">全部分类</option></select>
+        <select id="lib-sort">
+          <option value="-like">按点赞 ↓</option>
+          <option value="-view">按浏览 ↓</option>
+          <option value="name">按名称 A-Z</option>
+        </select>
+        <label class="feat"><input type="checkbox" id="lib-dl" checked disabled />⬇ 可下载</label>
+        <div class="search"><input type="text" id="lib-q" placeholder="搜索模型…" /></div>
+      </div>
+      <div class="lib-count" id="lib-count"></div>
+      <div class="g-grid" id="gallery"></div>
+    </div>
+
+    <!-- 社区导航 -->
+    <div class="section" id="communities-sec">
+      <div class="sec-head"><h2>探索更多模型社区</h2></div>
+      <p class="sec-sub">想要人物手办、机械结构等复杂模型？这些社区有海量作品（下载时请留意各模型的许可协议）。</p>
+      <div class="comm" id="communities"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="foot-in">
+      <span>SnapPrint · 咔印3D — 照片转可打印 3D 模型</span>
+      <a href="https://github.com/luisdingww-bit/snapprint" target="_blank" rel="noopener">GitHub 开源仓库 ↗</a>
+      <span class="lic">© 2026 luisdingww-bit · Apache-2.0</span>
+    </div>
+  </footer>
+
+<script src="vendor/three.min.js"></script>
+<script src="gallery.js"></script>
+<script src="shapes3d.js"></script>
+<script src="modelio.js"></script>
+<script src="splat.js"></script>
+<script src="presets.js"></script>
+<script src="app.js"></script>
+<script>
+  window.addEventListener("error", function(e){
+    var el = document.getElementById("err");
+    if(el){ el.classList.remove("hidden"); el.textContent = "页面脚本出错：" + (e.message || "未知错误"); }
+  });
+
+  var S = window.SnapPrintCore;
+  function $(id){ return document.getElementById(id); }
+  /** 后端基地址：meta[api-base] 为空表示同源（后端直接托管本页时）。 */
+  function apiBase(){
+    var m = document.querySelector('meta[name="api-base"]');
+    var v = m ? (m.getAttribute("content") || "").trim() : "";
+    return v ? v.replace(/\/+$/, "") : "";
+  }
+  var img = null, mesh = null, galleryItem = null, dlName = "snapprint";
+  var lastFile = null;   // 最近一次选择的原始文件（AI 图生3D 需要发给后端）
+  var impMesh = null, impName = "";   // 用户上传的 3D 模型（原始网格，未缩放）
+  var splat = null, splatScene = null; // 3DGS 点云 / 选中的泼溅场景 id
+
+  /* ── 共享参数状态：顶部面板 与 预览区面板 双向同步 ── */
+  var P = { mode:"relief", w:60, base:2, relief:4, q:160, exH:5, exT:50, invert:false, lockMode:false,
+            shape:"vase", s3H:120, s3D:80, s3Seg:120, s3Tw:0, s3Lobe:0, impW:80,
+            spCount:24, spSize:10, spW:80, spDepth:15 };
+  var FIELDS = [
+    { key:"w",      label:"宽度",     unit:"mm", min:20,  max:200, step:1,  grp:"img" },
+    { key:"base",   label:"底座厚",   unit:"mm", min:0.5, max:10,  step:0.5,grp:"relief" },
+    { key:"relief", label:"浮雕高",   unit:"mm", min:0.5, max:20,  step:0.5,grp:"relief" },
+    { key:"q",      label:"精细度",   unit:"格", min:64,  max:320, step:32, grp:"img" },
+    { key:"exH",    label:"拉伸厚度", unit:"mm", min:1,   max:30,  step:0.5,grp:"extrude" },
+    { key:"exT",    label:"轮廓阈值", unit:"%",  min:5,   max:95,  step:5,  grp:"extrude" },
+    { key:"s3H",    label:"高度",     unit:"mm", min:20,  max:200, step:1,  grp:"solid3d" },
+    { key:"s3D",    label:"直径",     unit:"mm", min:10,  max:200, step:1,  grp:"solid3d" },
+    { key:"s3Seg",  label:"圆周分段", unit:"段", min:8,   max:160, step:4,  grp:"solid3d" },
+    { key:"s3Tw",   label:"扭转",     unit:"°",  min:0,   max:720, step:10, grp:"solid3d" },
+    { key:"s3Lobe", label:"棱数",     unit:"棱", min:0,   max:12,  step:1,  grp:"solid3d" },
+    { key:"impW",   label:"最大边长", unit:"mm", min:10,  max:250, step:1,  grp:"import" },
+    { key:"spCount",label:"高斯数量", unit:"千点", min:5, max:60,  step:1,  grp:"splat" },
+    { key:"spSize", label:"点大小",   unit:"×0.1", min:4, max:30,  step:1,  grp:"splat" },
+    { key:"spW",    label:"宽度",     unit:"mm", min:30,  max:200, step:1,  grp:"splatimg" },
+    { key:"spDepth",label:"深度起伏", unit:"mm", min:0,   max:40,  step:1,  grp:"splatimg" }
+  ];
+  function fieldByKey(k){ for(var i=0;i<FIELDS.length;i++) if(FIELDS[i].key===k) return FIELDS[i]; }
+  function fieldVisible(f){
+    if(f.grp==="img") return P.mode==="relief" || P.mode==="extrude";
+    if(f.grp==="splat") return P.mode==="splat";
+    if(f.grp==="splatimg") return P.mode==="splat" && !splatScene;
+    return f.grp===P.mode;
+  }
+  var MODE_TIPS = {
+    relief:  "按明暗生成起伏浮雕 —— 适合照片、风景、人像。",
+    extrude: "提取深色轮廓垂直拉伸成立体实体 —— 适合 Logo、剪影、手绘线稿、文字。",
+    solid3d: "无需照片，直接参数化生成真实立体几何（旋转体 / 圆环）—— 花瓶、宝石、球、圆环、棋子…",
+    import:  "上传你自己的 STL / OBJ / PLY / GLB 模型 —— 预览、按毫米缩放，并转换成任意其他格式下载。",
+    splat:   "3DGS 高斯泼溅点云 —— 上传照片生成彩色高斯点云，或在下方画廊选一个泼溅场景；导出标准 3DGS .ply / .splat。"
+  };
+  var INV_TIPS = {
+    relief:  "反相（亮处凹陷，适合印章/模具）",
+    extrude: "反相（改为提取亮色部分作为实体）"
+  };
+
+  /* ── 构建控制面板（顶部 / 预览区 复用同一套逻辑） ── */
+  function buildPanel(side){
+    var cont = $("panel-"+side);
+    if(!cont) return;
+    cont.innerHTML = "";
+    if(side==="bottom"){
+      var hd = document.createElement("div");
+      hd.className = "rehead"; hd.textContent = "↻ 重新编辑参数并生成";
+      cont.appendChild(hd);
+    }
+    // 模式分段控件
+    var seg = document.createElement("div");
+    seg.className = "seg";
+    var segHtml = '<button type="button" data-mode="relief">🖼 照片浮雕</button>';
+    if(!P.lockMode){
+      segHtml += '<button type="button" data-mode="extrude">✂️ 2D 轮廓拉伸</button>';
+      segHtml += '<button type="button" data-mode="solid3d">🧊 真实3D模型</button>';
+      segHtml += '<button type="button" data-mode="import">📦 导入模型</button>';
+      segHtml += '<button type="button" data-mode="splat">✨ 高斯泼溅</button>';
+    }
+    seg.innerHTML = segHtml;
+    seg.querySelectorAll("button").forEach(function(b){
+      if(b.getAttribute("data-mode")===P.mode) b.classList.add("on");
+      b.addEventListener("click", function(){ setMode(b.getAttribute("data-mode")); });
+    });
+    cont.appendChild(seg);
+    var tip = document.createElement("div");
+    tip.className = "mode-tip"; tip.textContent = MODE_TIPS[P.mode];
+    cont.appendChild(tip);
+
+    // 真实3D：形状选择下拉
+    if(P.mode==="solid3d" && window.SnapPrint3D){
+      var sf = document.createElement("div");
+      sf.className = "field";
+      var opts = window.SnapPrint3D.shapes.map(function(s){
+        return '<option value="'+s.id+'"'+(s.id===P.shape?" selected":"")+'>'+s.emoji+' '+s.name+'</option>';
+      }).join("");
+      sf.innerHTML = '<label>模型类型 <span></span></label><select>'+opts+'</select>';
+      sf.querySelector("select").addEventListener("change", function(e){ setShape(e.target.value); });
+      cont.appendChild(sf);
+    }
+
+    // 滑块行
+    function rowHTML(keys){
+      return '<div class="row">'+keys.map(function(k){
+        var f = fieldByKey(k);
+        return '<div class="field'+(fieldVisible(f)?"":" hidden")+'" data-f="'+k+'">'+
+          '<label>'+f.label+' <span><span class="pv">'+P[k]+'</span> '+f.unit+'</span></label>'+
+          '<input type="range" min="'+f.min+'" max="'+f.max+'" step="'+f.step+'" value="'+P[k]+'" /></div>';
+      }).join("")+'</div>';
+    }
+    // 导入模式：显示当前已上传的模型信息 / 上传引导
+    if(P.mode==="import"){
+      var info = document.createElement("div");
+      info.className = "mode-tip";
+      info.innerHTML = impMesh
+        ? '已导入：<b style="color:var(--txt)">' + impName + '</b>（' + impMesh.F.length.toLocaleString() +
+          ' 面' + (impMesh.C ? '，带顶点色' : '') + '）—— 拖动下方滑块即可缩放'
+        : '请在左侧「选择文件」区上传 <b style="color:var(--txt)">STL / OBJ / PLY / GLB</b> 模型文件。';
+      cont.appendChild(info);
+    }
+
+    // 高斯泼溅：显示当前来源（场景 / 照片 / 待选择）
+    if(P.mode==="splat"){
+      var sInfo = document.createElement("div");
+      sInfo.className = "mode-tip";
+      var sc = splatScene && window.SnapPrintSplat && window.SnapPrintSplat.byId(splatScene);
+      sInfo.innerHTML = sc
+        ? '当前场景：<b style="color:var(--txt)">' + sc.emoji + ' ' + sc.name + '</b> —— 拖动滑块调点数/大小；上传照片可切换为照片点云'
+        : (img ? '来源：<b style="color:var(--txt)">你上传的照片</b> —— 按亮度生成深度起伏的彩色高斯点云'
+               : '请上传一张照片，或到下方「模型库」筛选 ✨ 高斯泼溅 点选一个场景。');
+      cont.appendChild(sInfo);
+    }
+
+    cont.insertAdjacentHTML("beforeend",
+      rowHTML(["w","q"]) + rowHTML(["base","relief"]) + rowHTML(["exH","exT"]) +
+      rowHTML(["s3H","s3D"]) + rowHTML(["s3Seg","s3Tw"]) + rowHTML(["s3Lobe"]) +
+      rowHTML(["impW"]) + rowHTML(["spCount","spSize"]) + rowHTML(["spW","spDepth"]));
+
+    // 反相（真实3D / 导入 / 高斯泼溅模式不需要）
+    if(P.mode!=="solid3d" && P.mode!=="import" && P.mode!=="splat"){
+      var chk = document.createElement("label");
+      chk.className = "chk";
+      chk.innerHTML = '<input type="checkbox"'+(P.invert?" checked":"")+' /> <span>'+INV_TIPS[P.mode]+'</span>';
+      chk.querySelector("input").addEventListener("change", function(e){ P.invert = e.target.checked; regen(); });
+      cont.appendChild(chk);
+    }
+
+    // 滑块事件：更新状态 + 双向同步数值显示 + 防抖重新生成
+    cont.querySelectorAll('input[type=range]').forEach(function(el){
+      el.addEventListener("input", function(){
+        var k = el.closest(".field").getAttribute("data-f");
+        P[k] = parseFloat(el.value);
+        document.querySelectorAll('[data-f="'+k+'"] .pv').forEach(function(s){ s.textContent = el.value; });
+        regenDebounced();
+      });
+    });
+
+    // 预览区额外按钮
+    if(side==="bottom"){
+      var btn = document.createElement("button");
+      btn.type = "button"; btn.className = "go"; btn.textContent = "重新生成";
+      btn.addEventListener("click", regen);
+      cont.appendChild(btn);
+    }
+  }
+
+  function setMode(m){
+    if(P.lockMode && m!=="relief") return;
+    P.mode = m;
+    if(m==="solid3d"){
+      galleryItem = null;                 // 真实3D 不依赖图片/画廊条目
+      $("go").disabled = false;
+      if(!P.shape) P.shape = "vase";
+    }else if(m==="import"){
+      galleryItem = null;
+      $("go").disabled = !impMesh;
+      if(!impMesh) $("status").textContent = "请上传一个 STL / OBJ / PLY / GLB 模型文件（左侧选择文件区）。";
+    }else if(m==="splat"){
+      galleryItem = null;
+      $("go").disabled = !img && !splatScene;
+      if(!img && !splatScene) $("status").textContent = "请上传照片，或到下方「模型库」筛选 ✨ 高斯泼溅 点选一个场景。";
+    }else{
+      $("go").disabled = !img;
+    }
+    buildPanel("top"); buildPanel("bottom");
+    regen();
+  }
+
+  /** 切换真实3D 形状：载入该形状默认参数并重新生成 */
+  function setShape(id){
+    var sh = window.SnapPrint3D && window.SnapPrint3D.byId(id);
+    if(!sh) return;
+    P.shape = id;
+    var d = sh.defaults;
+    P.s3H = d.H; P.s3D = d.D; P.s3Seg = d.seg; P.s3Tw = d.twist; P.s3Lobe = d.lobes;
+    buildPanel("top"); buildPanel("bottom");
+    regen();
+  }
+
+  var drop = $("drop");
+  $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+  ["dragover","dragenter"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = "var(--orange)"; });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.style.borderColor = ""; });
+  });
+  drop.addEventListener("drop", function(e){
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+  });
+
+  var FILE_ACCEPT = "image/*,.stl,.obj,.ply,.glb";
+  function isModelFile(f){
+    var ext = (f.name.split(".").pop() || "").toLowerCase();
+    return ["stl","obj","ply","glb","gltf"].indexOf(ext) !== -1;
+  }
+  function rebindDrop(html){
+    drop.innerHTML = html + "<input type=\"file\" id=\"file\" accept=\"" + FILE_ACCEPT + "\" />";
+    $("file").addEventListener("change", function(e){ pick(e.target.files[0]); });
+  }
+
+  function pick(f){
+    if(!f){ return; }
+    lastFile = f;   // 记住原始文件，AI 图生3D 时发给后端
+    if(isModelFile(f)){ pickModel(f); return; }
+    if(!f.type || f.type.indexOf("image/") !== 0){
+      $("status").textContent = "请选择图片（JPG/PNG）或模型文件（STL/OBJ/PLY/GLB）。";
+      return;
+    }
+    var url = URL.createObjectURL(f);
+    var im = new Image();
+    im.onload = function(){
+      img = im;
+      galleryItem = null; P.lockMode = false;
+      splatScene = null;                                               // 选图后泼溅来源切回照片
+      if(P.mode==="solid3d" || P.mode==="import") P.mode = "relief";   // 选图后切回浮雕模式
+      buildPanel("top"); buildPanel("bottom");
+      rebindDrop("已选择：<b>" + f.name + "</b><br><img src=\"" + url + "\" alt=\"\" />");
+      $("go").disabled = false;
+      $("status").textContent = "就绪，点击生成（全程在你的浏览器里，不上传任何数据）。";
+    };
+    im.onerror = function(){ $("status").textContent = "图片读取失败，请换一张。"; };
+    im.src = url;
+  }
+
+  /** 上传自己的 3D 模型：解析 → 切到导入模式 → 立即预览 */
+  function pickModel(f){
+    if(!window.SnapPrintIO){ $("status").textContent = "模型解析模块未加载。"; return; }
+    $("status").textContent = "正在解析模型「" + f.name + "」…";
+    var fr = new FileReader();
+    fr.onload = function(){
+      try{
+        var m = window.SnapPrintIO.parse(f.name, fr.result);
+        impMesh = m;
+        impName = f.name;
+        galleryItem = null; P.lockMode = false;
+        P.mode = "import";
+        // 默认最大边长：取原始尺寸最长边（夹在滑块范围内），即"保持原尺寸"
+        var st0 = S.stats(m.V, m.F);
+        var longest = Math.max(st0.size_mm[0], st0.size_mm[1], st0.size_mm[2]);
+        P.impW = Math.max(10, Math.min(250, Math.round(longest) || 80));
+        dlName = "snapprint-" + f.name.replace(/\.[^.]+$/, "");
+        buildPanel("top"); buildPanel("bottom");
+        rebindDrop("已导入模型：<b>" + f.name + "</b><br>" +
+          '<span style="font-size:12px">' + m.F.length.toLocaleString() + " 面 · 原始尺寸 " +
+          st0.size_mm.map(function(x){ return x.toFixed(1); }).join(" × ") + " mm" +
+          (m.C ? " · 带顶点色" : "") + "</span>");
+        $("go").disabled = false;
+        generate();
+      }catch(e){
+        $("status").textContent = "模型解析失败：" + e.message;
+      }
+    };
+    fr.onerror = function(){ $("status").textContent = "文件读取失败，请重试。"; };
+    fr.readAsArrayBuffer(f);
+  }
+
+  /* ── 生成（统一读取共享状态 P；图片 或 画廊模型 皆可） ── */
+  /** 切换预览&下载区的形态：网格 或 3DGS 点云 */
+  function setResultKind(kind){
+    var isSplat = kind === "splat";
+    var isBackend = kind === "backend";
+    $("dl-mesh").classList.toggle("hidden", isSplat || isBackend);
+    $("dl-splat").classList.toggle("hidden", !isSplat);
+    $("preset-box").classList.toggle("hidden", isSplat || isBackend);
+    $("dl-backend").classList.toggle("hidden", !isBackend);
+    $("dl-hint").classList.toggle("hidden", isBackend);
+    if(isSplat){
+      $("dl-hint").textContent = "PLY（3DGS 标准）可导入 SuperSplat / Polycam / 各类高斯泼溅查看器；.splat 适用于 antimatter15 等 Web 查看器。点云不可直接切片打印。";
+    }else if(!isBackend){
+      $("dl-hint").textContent = "STL 兼容所有切片软件；带颜色选 PLY / GLB；GLB 可在手机、Windows 3D查看器、网页里直接打开。";
+    }
+  }
+
+  function generate(){
+    if(!S) return;
+    // 选中 AI 引擎且有图片 → 走后端图生3D（多引擎 + 生成参数）
+    if(window.SNAP_MODEL && lastFile && (lastFile.type||"").indexOf("image/")===0){
+      generateAI(); return;
+    }
+    if(P.mode==="import" && !impMesh) return;
+    if(P.mode==="splat" && !img && !splatScene) return;
+    if(P.mode!=="solid3d" && P.mode!=="import" && P.mode!=="splat" && !img && !galleryItem) return;
+    $("status").textContent = "生成中…";
+    setTimeout(function(){                      // 让 UI 先刷新
+      try{
+        var t0 = performance.now();
+        if(P.mode==="splat"){
+          var SP = window.SnapPrintSplat;
+          if(!SP) throw new Error("3DGS 模块未加载");
+          if(splatScene){
+            splat = SP.buildScene(splatScene, { count: P.spCount * 1000, pointScale: P.spSize / 10 });
+            dlName = "snapprint-gs-" + splatScene;
+          }else{
+            var scW = Math.min(img.naturalWidth, 480);
+            var scH = Math.max(8, Math.round(scW * img.naturalHeight / img.naturalWidth));
+            var scv = document.createElement("canvas");
+            scv.width = scW; scv.height = scH;
+            var sctx = scv.getContext("2d", { willReadFrequently: true });
+            sctx.drawImage(img, 0, 0, scW, scH);
+            splat = SP.fromImage(sctx.getImageData(0, 0, scW, scH).data, scW, scH, {
+              widthMM: P.spW, depthMM: P.spDepth,
+              count: P.spCount * 1000, pointScale: P.spSize / 10
+            });
+            dlName = "snapprint-gs-photo";
+          }
+          mesh = null;
+          renderSplatStats(splat);
+          renderSplat3D(splat);
+          setResultKind("splat");
+          $("panel-bottom").classList.remove("hidden");
+          $("status").textContent = "完成 ✅（" + splat.n.toLocaleString() + " 个高斯，耗时 " +
+            Math.round(performance.now() - t0) + " ms，全程本地计算）";
+          return;
+        }
+        if(P.mode==="import"){
+          mesh = window.SnapPrintIO.normalize(impMesh, P.impW);
+          // dlName 已在 pickModel 里设置
+        }else if(P.mode==="solid3d"){
+          if(!window.SnapPrint3D) throw new Error("真实3D 模块未加载");
+          mesh = window.SnapPrint3D.build(P.shape, {
+            H: P.s3H, D: P.s3D, seg: P.s3Seg, twist: P.s3Tw, lobes: P.s3Lobe
+          });
+          dlName = "snapprint-" + P.shape;
+        }else if(galleryItem){
+          mesh = window.SnapPrintGallery.buildItem(galleryItem, {
+            quality: P.q, widthMM: P.w, depthMM: P.w, baseMM: P.base, reliefMM: P.relief
+          });
+          dlName = "snapprint-" + galleryItem.id;
+        }else{
+          var aspect = img.naturalHeight / img.naturalWidth;
+          var cols = P.q, rows = Math.max(16, Math.round(P.q * aspect));
+          var cv = document.createElement("canvas");
+          cv.width = cols; cv.height = rows;
+          var ctx = cv.getContext("2d", { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, cols, rows);
+          var px = ctx.getImageData(0, 0, cols, rows).data;
+          var n = rows * cols, hts = new Array(n), cls = new Array(n);
+          for(var i = 0; i < n; i++){
+            var R = px[i*4], G = px[i*4+1], B = px[i*4+2];
+            var g = (0.299*R + 0.587*G + 0.114*B) / 255;
+            hts[i] = P.invert ? 1 - g : g;
+            cls[i] = [R, G, B];
+          }
+          var W = P.w;
+          if(P.mode === "extrude"){
+            var thr = P.exT / 100;
+            var msk = new Array(n);
+            for(i = 0; i < n; i++){
+              var gray = P.invert ? 1 - hts[i] : hts[i];   // 还原原始灰度
+              msk[i] = P.invert ? (gray > thr) : (gray < thr);
+            }
+            mesh = S.buildExtrude(msk, cols, rows, cls, {
+              widthMM: W,
+              depthMM: Math.round(W * aspect * 10) / 10,
+              heightMM: P.exH
+            });
+            dlName = "snapprint-extrude";
+          }else{
+            mesh = S.buildRelief(hts, cols, rows, cls, {
+              widthMM: W,
+              depthMM: Math.round(W * aspect * 10) / 10,
+              baseMM: P.base,
+              reliefMM: P.relief
+            });
+            dlName = "snapprint";
+          }
+        }
+        splat = null;
+        var st = S.stats(mesh.V, mesh.F);
+        renderStats(st);
+        render3D(mesh);
+        setResultKind("mesh");
+        if(window._presetRefresh) window._presetRefresh();  // 更新切片预设推荐
+        $("panel-bottom").classList.remove("hidden");
+        var ms = Math.round(performance.now() - t0);
+        $("status").textContent = "完成 ✅（耗时 " + ms + " ms，全程本地计算）";
+      }catch(e){
+        $("status").textContent = "错误：" + e.message;
+      }
+    }, 30);
+  }
+  var _rt = null;
+  function regenDebounced(){ clearTimeout(_rt); _rt = setTimeout(generate, 120); }
+  function regen(){ generate(); }
+
+  // 初始化两套面板，并连接主生成按钮
+  buildPanel("top");
+  buildPanel("bottom");
+  $("go").addEventListener("click", generate);
+
+  function renderStats(st){
+    $("result").classList.remove("hidden");
+    var wt = $("wt");
+    wt.textContent = st.watertight ? "是" : "否";
+    wt.className = "badge " + (st.watertight ? "ok" : "no");
+    $("size").textContent = st.size_mm.map(function(x){ return x.toFixed(1); }).join(" × ");
+    $("vol").textContent = st.volume_cm3;
+    $("faces").textContent = st.faces.toLocaleString();
+    $("verts").textContent = st.vertices.toLocaleString();
+  }
+
+  /** 3DGS 点云统计（无水密/体积概念） */
+  function renderSplatStats(s){
+    $("result").classList.remove("hidden");
+    var st = window.SnapPrintSplat.statsSplat(s);
+    var wt = $("wt");
+    wt.textContent = "3DGS 点云";
+    wt.className = "badge ok";
+    $("size").textContent = st.size_mm.map(function(x){ return x.toFixed(1); }).join(" × ");
+    $("vol").textContent = "—";
+    $("faces").textContent = "—";
+    $("verts").textContent = st.points.toLocaleString() + " 高斯";
+  }
+
+  /** 真 3D 可旋转预览（three.js 本地打包，拖拽旋转 / 滚轮缩放 / 触屏支持） */
+  var viewer = null;
+  function ensureViewer(){
+    if(viewer) return viewer;
+    var pv = $("preview");
+    pv.innerHTML = "";
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setSize(pv.clientWidth, pv.clientHeight);
+    pv.appendChild(renderer.domElement);
+    var tip = document.createElement("div");
+    tip.className = "pv-tip"; tip.textContent = "拖拽旋转 · 滚轮缩放 · 自动旋转中";
+    pv.appendChild(tip);
+
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeceef1);
+    var camera = new THREE.PerspectiveCamera(45, pv.clientWidth / pv.clientHeight, 0.1, 5000);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    var d1 = new THREE.DirectionalLight(0xffffff, 0.75); d1.position.set(1, 2, 1.5); scene.add(d1);
+    var d2 = new THREE.DirectionalLight(0xcfe0ff, 0.3); d2.position.set(-1.5, -1, -1); scene.add(d2);
+    var pivot = new THREE.Group(); scene.add(pivot);
+
+    viewer = { renderer: renderer, scene: scene, camera: camera, pivot: pivot, tip: tip,
+               rotX: -0.5, rotY: 0.6, dist: 100, minD: 10, maxD: 2000, auto: true, obj: null };
+
+    // 交互：指针拖拽旋转、滚轮缩放（含触屏 Pointer Events）
+    var dragging = false, lx = 0, ly = 0;
+    var el = renderer.domElement;
+    el.addEventListener("pointerdown", function(e){
+      dragging = true; lx = e.clientX; ly = e.clientY;
+      viewer.auto = false; viewer.tip.textContent = "拖拽旋转 · 滚轮缩放";
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener("pointermove", function(e){
+      if(!dragging) return;
+      viewer.rotY += (e.clientX - lx) * 0.008;
+      viewer.rotX += (e.clientY - ly) * 0.008;
+      viewer.rotX = Math.max(-1.5, Math.min(1.5, viewer.rotX));
+      lx = e.clientX; ly = e.clientY;
+    });
+    el.addEventListener("pointerup", function(){ dragging = false; });
+    el.addEventListener("wheel", function(e){
+      e.preventDefault();
+      viewer.dist *= (e.deltaY > 0 ? 1.1 : 0.9);
+      viewer.dist = Math.max(viewer.minD, Math.min(viewer.maxD, viewer.dist));
+    }, { passive: false });
+    window.addEventListener("resize", function(){
+      var w = pv.clientWidth, h = pv.clientHeight;
+      viewer.camera.aspect = w / h; viewer.camera.updateProjectionMatrix();
+      viewer.renderer.setSize(w, h);
+    });
+
+    (function loop(){
+      requestAnimationFrame(loop);
+      if(viewer.auto) viewer.rotY += 0.005;
+      viewer.pivot.rotation.x = viewer.rotX;
+      viewer.pivot.rotation.y = viewer.rotY;
+      var c = viewer.camera;
+      c.position.set(0, 0, viewer.dist);
+      c.lookAt(0, 0, 0);
+      viewer.renderer.render(viewer.scene, viewer.camera);
+    })();
+    return viewer;
+  }
+
+  function render3D(m){
+    var pv = $("preview");
+    if(typeof THREE === "undefined"){ pv.textContent = "3D 引擎加载失败（three.min.js 缺失）"; return; }
+
+    // 组装 BufferGeometry（Z-up mm → three 的 Y-up，居中）
+    var n = m.V.length, nf = m.F.length;
+    var pos = new Float32Array(n * 3);
+    for(var i = 0; i < n; i++){
+      pos[i*3] = m.V[i][0]; pos[i*3+1] = m.V[i][2]; pos[i*3+2] = -m.V[i][1];
+    }
+    var idx = new Uint32Array(nf * 3);
+    for(i = 0; i < nf; i++){ idx[i*3] = m.F[i][0]; idx[i*3+1] = m.F[i][1]; idx[i*3+2] = m.F[i][2]; }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    if(m.C){
+      var col = new Float32Array(n * 3);
+      for(i = 0; i < n; i++){ col[i*3] = m.C[i][0]/255; col[i*3+1] = m.C[i][1]/255; col[i*3+2] = m.C[i][2]/255; }
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    }
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox, center = new THREE.Vector3();
+    bb.getCenter(center);
+    geo.translate(-center.x, -center.y, -center.z);
+    var radius = bb.getSize(new THREE.Vector3()).length() * 0.5;
+
+    // 初始化 / 复用 viewer（浅色背景 = 网格模式）
+    ensureViewer();
+    viewer.scene.background = new THREE.Color(0xeceef1);
+
+    // 替换模型
+    if(viewer.obj){
+      viewer.pivot.remove(viewer.obj);
+      viewer.obj.geometry.dispose(); viewer.obj.material.dispose();
+    }
+    var mat = new THREE.MeshStandardMaterial({
+      vertexColors: !!m.C, color: m.C ? 0xffffff : 0xfa6831,
+      metalness: 0.05, roughness: 0.75, flatShading: false
+    });
+    viewer.obj = new THREE.Mesh(geo, mat);
+    viewer.pivot.add(viewer.obj);
+    viewer.dist = radius * 2.6;
+    viewer.minD = radius * 0.8; viewer.maxD = radius * 8;
+    viewer.auto = true;
+    viewer.tip.textContent = "拖拽旋转 · 滚轮缩放 · 自动旋转中";
+  }
+
+  /** 3DGS 点云预览：加性混合圆形软粒子（暗色背景），复用同一 viewer */
+  function renderSplat3D(s){
+    var pv = $("preview");
+    if(typeof THREE === "undefined"){ pv.textContent = "3D 引擎加载失败（three.min.js 缺失）"; return; }
+    ensureViewer();
+    viewer.scene.background = new THREE.Color(0x14161c);
+
+    var n = s.n;
+    var pos = new Float32Array(n * 3);
+    var col = new Float32Array(n * 3);
+    var alp = new Float32Array(n);
+    var siz = new Float32Array(n);
+    var mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+    for(var i = 0; i < n; i++){
+      var x = s.pos[i*3], y = s.pos[i*3+1], z = s.pos[i*3+2];
+      // Z-up mm → three Y-up
+      pos[i*3] = x; pos[i*3+1] = z; pos[i*3+2] = -y;
+      if(x<mn[0])mn[0]=x; if(x>mx[0])mx[0]=x;
+      if(y<mn[1])mn[1]=y; if(y>mx[1])mx[1]=y;
+      if(z<mn[2])mn[2]=z; if(z>mx[2])mx[2]=z;
+      col[i*3] = s.col[i*4]/255; col[i*3+1] = s.col[i*4+1]/255; col[i*3+2] = s.col[i*4+2]/255;
+      alp[i] = s.col[i*4+3]/255;
+      siz[i] = Math.max(0.3, (s.scale[i*3] + s.scale[i*3+1] + s.scale[i*3+2]) / 3) * 2.2;
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("alpha", new THREE.BufferAttribute(alp, 1));
+    geo.setAttribute("psize", new THREE.BufferAttribute(siz, 1));
+    // 居中
+    var cx=(mn[0]+mx[0])/2, cy=(mn[1]+mx[1])/2, cz=(mn[2]+mx[2])/2;
+    geo.translate(-cx, -cz, cy);   // 注意轴变换后的中心
+    geo.computeBoundingSphere();
+    var radius = Math.max(10, geo.boundingSphere ? geo.boundingSphere.radius : 60);
+
+    var mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader:
+        "attribute float alpha; attribute float psize; varying vec3 vC; varying float vA;\n" +
+        "void main(){ vC = color; vA = alpha;\n" +
+        "  vec4 mv = modelViewMatrix * vec4(position,1.0);\n" +
+        "  gl_PointSize = psize * (240.0 / -mv.z);\n" +
+        "  gl_Position = projectionMatrix * mv; }",
+      fragmentShader:
+        "varying vec3 vC; varying float vA;\n" +
+        "void main(){ vec2 d = gl_PointCoord - vec2(0.5);\n" +
+        "  float r2 = dot(d,d); if(r2 > 0.25) discard;\n" +
+        "  float w = exp(-r2 * 14.0);\n" +
+        "  gl_FragColor = vec4(vC * w * vA, w * vA); }",
+      vertexColors: true
+    });
+
+    if(viewer.obj){
+      viewer.pivot.remove(viewer.obj);
+      viewer.obj.geometry.dispose(); viewer.obj.material.dispose();
+    }
+    viewer.obj = new THREE.Points(geo, mat);
+    viewer.pivot.add(viewer.obj);
+    viewer.dist = radius * 2.4;
+    viewer.minD = radius * 0.6; viewer.maxD = radius * 8;
+    viewer.auto = true;
+    viewer.tip.textContent = "3DGS 点云 · 拖拽旋转 · 滚轮缩放";
+  }
+
+  function save(name, data, mime){
+    var blob = data instanceof ArrayBuffer ? new Blob([data], {type: mime}) : new Blob([data], {type: mime});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  $("dl_stl").addEventListener("click", function(){ if(mesh) save(dlName + ".stl", S.exportSTL(mesh.V, mesh.F), "model/stl"); });
+  $("dl_obj").addEventListener("click", function(){ if(mesh) save(dlName + ".obj", S.exportOBJ(mesh.V, mesh.F), "text/plain"); });
+  $("dl_ply").addEventListener("click", function(){ if(mesh) save(dlName + ".ply", S.exportPLY(mesh.V, mesh.F, mesh.C), "text/plain"); });
+  $("dl_glb").addEventListener("click", function(){ if(mesh) save(dlName + ".glb", S.exportGLB(mesh.V, mesh.F, mesh.C), "model/gltf-binary"); });
+  $("dl_gsply").addEventListener("click", function(){ if(splat) save(dlName + ".ply", window.SnapPrintSplat.exportPLY(splat), "application/octet-stream"); });
+  $("dl_gssplat").addEventListener("click", function(){ if(splat) save(dlName + ".splat", window.SnapPrintSplat.exportSplat(splat), "application/octet-stream"); });
+
+  /* —— 切片就绪预设：分析当前网格 → 推荐参数 → 一键导出 .ini / 参数卡 —— */
+  (function initPresets(){
+    var PR = window.SnapPrintPresets;
+    if(!PR || !$("preset-box")) return;
+    var selP = $("pr_printer"), selM = $("pr_mat");
+    PR.printers.forEach(function(p){
+      var o = document.createElement("option"); o.value = p.id; o.textContent = p.name; selP.appendChild(o);
+    });
+    PR.materials.forEach(function(m){
+      var o = document.createElement("option"); o.value = m.id; o.textContent = m.name; selM.appendChild(o);
+    });
+    var rec = null;
+    function refresh(){
+      if(!mesh) return;
+      rec = PR.analyze(mesh.V, mesh.F, { mode: P.mode });
+      var p = PR.printers.filter(function(x){ return x.id === selP.value; })[0] || PR.printers[0];
+      var m = PR.materials.filter(function(x){ return x.id === selM.value; })[0] || PR.materials[0];
+      var est = PR.estimate(rec, m);
+      var f = PR.fit(rec, p);
+      var chips = [
+        "层高 <b>" + rec.layer_height + "mm</b>",
+        "填充 <b>" + rec.infill + "%</b>",
+        "支撑 <b>" + (rec.supports ? "开" : "免") + "</b>",
+        "Brim <b>" + (rec.brim_mm > 0 ? rec.brim_mm + "mm" : "关") + "</b>",
+        "喷嘴 <b>" + m.nozzle + "°C</b>",
+        "热床 <b>" + m.bed + "°C</b>",
+        "估算 ≈<b>" + est.grams.toFixed(0) + "g</b> · <b>" + (est.minutes / 60).toFixed(1) + "h</b>"
+      ];
+      $("pr_chips").innerHTML = chips.map(function(c){ return '<span class="pc">' + c + '</span>'; }).join("");
+      var sup = $("pr_support");
+      var typeLabel = rec.support_type === "tree" ? "树状(tree)" : "普通(normal)";
+      var densityLabel = rec.supports ? (rec.support_density * 100).toFixed(0) + "%" : "—";
+      if (rec.supports) {
+        sup.className = "p-support warn";
+        sup.innerHTML = "🛠 <b>支撑建议</b>：" + rec.support_reason +
+          "｜类型 <b>" + typeLabel + "</b>｜密度 <b>" + densityLabel + "</b>｜阈值 " + rec.support_threshold_deg + "°" +
+          (rec.orientation_advice ? "<br>💡 " + rec.orientation_advice : "");
+      } else {
+        sup.className = "p-support ok";
+        sup.innerHTML = "✅ " + rec.support_reason +
+          (rec.orientation_advice ? "<br>💡 " + rec.orientation_advice : "");
+      }
+      var warn = $("pr_warn");
+      if(!f.ok){
+        warn.classList.remove("hidden");
+        warn.textContent = "⚠️ 模型 " + rec.size_mm.map(function(x){ return x.toFixed(0); }).join("×") +
+          " mm 超出 " + p.name + " 打印范围（" + p.bed.join("×") + " mm），请先缩小尺寸。";
+      }else{
+        warn.classList.add("hidden");
+      }
+    }
+    selP.addEventListener("change", refresh);
+    selM.addEventListener("change", refresh);
+    $("pr_ini").addEventListener("click", function(){
+      if(!mesh || !rec) return;
+      save(dlName + "-preset.ini", PR.exportINI(rec, selP.value, selM.value, dlName), "text/plain");
+    });
+    $("pr_txt").addEventListener("click", function(){
+      if(!mesh || !rec) return;
+      save(dlName + "-print-card.txt", PR.exportTXT(rec, selP.value, selM.value, dlName), "text/plain");
+    });
+    $("dl_blender").addEventListener("click", function(){
+      if(!mesh){ alert("请先生成模型，再在 Blender 中打开。"); return; }
+      var S = window.SnapPrintCore;
+      save(dlName + ".obj", S.exportOBJ(mesh.V, mesh.F), "text/plain");
+      $("blender_tip").classList.remove("hidden");
+    });
+    window._presetRefresh = refresh;
+  })();
+
+  // 模型动物园（对齐 modly 的多引擎图生3D 阵容；速度↔质量可选）
+  (function initModelZoo(){
+    var ZOO = [
+      {id:"hunyuan3d", name:"Hunyuan3D-2（通用底座）", speed:"balanced", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini", name:"Hunyuan3D 2 Mini（轻量）", speed:"fast", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini-turbo", name:"Hunyuan3D 2 Mini Turbo（极速）", speed:"fastest", texture:true, domain:"通用"},
+      {id:"hunyuan3d-mini-fast", name:"Hunyuan3D 2 Mini Fast（极速）", speed:"fastest", texture:true, domain:"通用"},
+      {id:"triposg", name:"TripoSG（几何质量高）", speed:"balanced", texture:false, domain:"通用"},
+      {id:"sf3d", name:"SF3D（秒级·拓扑干净）", speed:"fast", texture:false, domain:"通用"},
+      {id:"trellis2", name:"Trellis2 GGUF（高质量）", speed:"quality", texture:true, domain:"通用"},
+      {id:"figure", name:"手办模型（社区微调）", speed:"balanced", texture:true, domain:"手办"},
+      {id:"jewelry", name:"珠宝模型（社区微调）", speed:"balanced", texture:true, domain:"珠宝"},
+      {id:"ecom", name:"电商模型（社区微调）", speed:"balanced", texture:true, domain:"电商"}
+    ];
+    var SPEED_LABELS = {fastest:"⚡极速", fast:"🚀快速", balanced:"⚖️均衡", quality:"💎高质量"};
+    var sel = $("model-sel"); if(!sel) return;
+    window.SNAP_MODEL = "";
+    var o0 = document.createElement("option"); o0.value=""; o0.textContent="默认（客户端模式）"; sel.appendChild(o0);
+    var byId = {};
+    ZOO.forEach(function(m){
+      byId[m.id] = m;
+      var o = document.createElement("option"); o.value=m.id;
+      var tag = "[" + (SPEED_LABELS[m.speed]||m.speed) + (m.texture ? " · 贴图" : "") + "]";
+      o.textContent = m.name + " " + tag;
+      sel.appendChild(o);
+    });
+    function onSelect(){
+      window.SNAP_MODEL = sel.value;
+      var m = byId[sel.value];
+      var show = !!sel.value;
+      $("adv-params").classList.toggle("hidden", !show);
+      $("texres-wrap").classList.toggle("hidden", !(m && m.texture)); // 仅支持贴图的引擎显示分辨率
+      if(!show){ $("status").textContent = "已切回客户端模式。"; }
+      else { $("status").textContent = "已选 AI 引擎 " + m.name + "（" + (SPEED_LABELS[m.speed]||m.speed) + "）。点击生成将走本地后端图生3D。"; }
+    }
+    sel.addEventListener("change", onSelect);
+    // 若配置了 api-base，拉取 /api/models 标注本机权重可用性
+    var base = apiBase();
+    if(base){
+      fetch(base + "/api/models").then(function(r){ return r.json(); }).then(function(j){
+        var avail = {};
+        (j.models||[]).forEach(function(x){ avail[x.id] = x.available; });
+        Array.prototype.forEach.call(sel.options, function(o){
+          if(!o.value || !avail.hasOwnProperty(o.value)) return;
+          if(!avail[o.value]) o.textContent = o.textContent + "（需本地权重）";
+        });
+      }).catch(function(){});
+    }
+  })();
+
+  /* ── 后端图生3D（多引擎 + 生成参数）：异步生成 → 轮询 → 下载链接 ── */
+  function generateAI(){
+    var base = apiBase();
+    if(!base){
+      $("status").textContent = "未配置后端：AI 图生3D 需本地部署 SnapPrint 后端（见 README「本地部署」）。纯浏览器模式可用上方其他生成模式。";
+      return;
+    }
+    if(!lastFile || (lastFile.type||"").indexOf("image/")!==0){
+      $("status").textContent = "请先选择一张图片，再生成 AI 3D 模型。"; return;
+    }
+    if(!window.SNAP_MODEL){ $("status").textContent = "请选择一个 AI 引擎。"; return; }
+    var m = window.SNAP_MODEL;
+    var fd = new FormData();
+    fd.append("file", lastFile);
+    fd.append("model", m);
+    fd.append("remesh", $("gen-remesh").value);
+    fd.append("enable_texture", $("gen-texture").checked ? "true" : "false");
+    fd.append("texture_resolution", $("gen-texres").value);
+    $("status").textContent = "提交到后端生成（"+m+"）…";
+    fetch(base + "/api/generate_async", { method:"POST", body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j.task_id){ pollAI(base, j.task_id); }
+        else if(j.detail){ $("status").textContent = "后端错误：" + j.detail; }
+        else { $("status").textContent = "后端未返回任务 ID。"; }
+      })
+      .catch(function(e){ $("status").textContent = "无法连接后端（"+base+"）：" + e.message; });
+  }
+  function pollAI(base, tid){
+    fetch(base + "/api/tasks/" + tid)
+      .then(function(r){ return r.json(); })
+      .then(function(t){
+        if(t.status==="queued" || t.status==="running"){
+          $("status").textContent = "生成中… " + (t.progress||0) + "% " + (t.stage?("· "+t.stage):"");
+          setTimeout(function(){ pollAI(base, tid); }, 1500);
+        }else if(t.status==="done"){
+          showAIResult(t.result || {}, base);
+        }else if(t.status==="error"){
+          $("status").textContent = "生成失败：" + (t.error || "未知错误");
+        }else{
+          $("status").textContent = "任务状态：" + (t.status||"未知");
+        }
+      })
+      .catch(function(e){ $("status").textContent = "轮询失败：" + e.message; });
+  }
+  function showAIResult(res, base){
+    $("result").classList.remove("hidden");
+    if(res.stats) renderStats(res.stats);
+    setResultKind("backend");
+    var box = $("dl-backend"); box.innerHTML = "";
+    var files = res.files || {};
+    var order = [
+      ["obj","⬇ OBJ","推荐打印"], ["ply","⬇ PLY（带颜色）",""],
+      ["glb","⬇ GLB（AR/网页）",""], ["3mf","⬇ 3MF（颜色+元数据）",""]
+    ];
+    var any = false;
+    order.forEach(function(p){
+      if(files[p[0]]){
+        any = true;
+        var b = document.createElement("button");
+        b.className = "primary";
+        b.textContent = p[1] + (p[2] ? "（"+p[2]+"）" : "");
+        b.onclick = function(){ window.open(base + files[p[0]], "_blank"); };
+        box.appendChild(b);
+      }
+    });
+    if(!any){
+      var s = document.createElement("span");
+      s.className = "hint"; s.textContent = "后端未返回可下载文件。";
+      box.appendChild(s);
+    }
+    $("panel-bottom").classList.remove("hidden");
+    $("status").textContent = "✅ 后端生成完成（" + (window.SNAP_MODEL||"") + "）";
+  }
+
+  // 轻量多语言（中英）：data-i18n=纯文本，data-i18n-html=含标签文本
+  (function initI18n(){
+    var I18N = {
+      zh: {
+        navMake:"创作", navGallery:"模型库", navGs:"高斯泼溅", navComm:"社区",
+        heroTitle:'一张照片 / 一个 Logo / 一句参数 / 你自己的模型，变成<em>可打印的 3D 模型</em>',
+        heroSub:"照片浮雕 + 2D 轮廓拉伸 + 真实3D几何 + 模型导入 + 3DGS 高斯泼溅五模式，全程在你的浏览器里完成 —— 零安装、零上传、秒级生成水密可切片网格或高斯点云，直接下载 STL / OBJ / PLY / GLB / .splat。",
+        goBtn:"生成 3D 模型", statusInit:"请先选择一张图片。",
+        previewHint:"生成后在此显示可旋转的 3D 模型",
+        presetHead:'🖨 切片就绪预设<span>按你的打印机智能推荐参数</span>',
+        galleryTitle:"模型库", galleryMore:"更多社区模型 →",
+        gallerySub:"33 款内置原创模型（16 真实3D + 9 浮雕 + 8 高斯泼溅）· Apache-2.0 可自由打印/商用 —— 全部可下载，点击卡片即刻生成、预览与导出。",
+        modelLabel:"AI 引擎（图生3D）", modelNote:"选了引擎即走本地后端图生3D（Hunyuan3D / TripoSR / SF3D / Trellis2）",
+        remeshLabel:"重网格化", remeshNone:"无（原始）", remeshTri:"三角化", remeshQuad:"四边形（需 pymeshlab）",
+        texLabel:"保留贴图", texresLabel:"分辨率"
+      },
+      en: {
+        navMake:"Create", navGallery:"Model Library", navGs:"Gaussian Splatting", navComm:"Community",
+        heroTitle:'Turn a photo / a logo / a few params / your own model into a <em>printable 3D model</em>',
+        heroSub:"Five modes — photo relief + 2D outline extrude + real 3D geometry + model import + 3DGS Gaussian splatting — all run in your browser. Zero install, zero upload, instant watertight sliceable mesh or Gaussian point cloud. Download STL / OBJ / PLY / GLB / .splat directly.",
+        goBtn:"Generate 3D Model", statusInit:"Please choose an image first.",
+        previewHint:"The rotatable 3D model appears here after generation",
+        presetHead:'🖨 Slice-ready Preset<span>Smart parameters for your printer</span>',
+        galleryTitle:"Model Library", galleryMore:"More community models →",
+        gallerySub:"33 built-in original models (16 real 3D + 9 relief + 8 Gaussian splatting) · Apache-2.0, free to print/commercialize — all downloadable; click a card to generate, preview and export instantly.",
+        modelLabel:"AI Engine (image-to-3D)", modelNote:"Pick an engine to use the local backend for image-to-3D (Hunyuan3D / TripoSR / SF3D / Trellis2)",
+        remeshLabel:"Remesh", remeshNone:"None (raw)", remeshTri:"Triangulate", remeshQuad:"Quad (needs pymeshlab)",
+        texLabel:"Keep texture", texresLabel:"Resolution"
+      }
+    };
+    function applyLang(lang){
+      var dict = I18N[lang] || I18N.zh;
+      document.querySelectorAll("[data-i18n]").forEach(function(el){
+        var k = el.getAttribute("data-i18n");
+        if(dict[k] != null) el.textContent = dict[k];
+      });
+      document.querySelectorAll("[data-i18n-html]").forEach(function(el){
+        var k = el.getAttribute("data-i18n-html");
+        if(dict[k] != null) el.innerHTML = dict[k];
+      });
+      var btn = $("lang-btn"); if(btn) btn.textContent = (lang==="zh" ? "EN" : "中文");
+      document.documentElement.lang = (lang==="zh" ? "zh-CN" : "en");
+      try{ localStorage.setItem("snapprint_lang", lang); }catch(e){}
+    }
+    var btn = $("lang-btn");
+    if(btn) btn.addEventListener("click", function(){
+      var cur = (document.documentElement.lang||"zh-CN").indexOf("en") === 0 ? "en" : "zh";
+      applyLang(cur==="zh" ? "en" : "zh");
+    });
+    var saved = null; try{ saved = localStorage.getItem("snapprint_lang"); }catch(e){}
+    var init = saved || (navigator.language && navigator.language.toLowerCase().indexOf("en") === 0 ? "en" : "zh");
+    applyLang(init);
+  })();
+
+  /* —— 模型库（Sketchfab 风格：筛选栏 + 统计卡片 + 点赞） —— */
+  (function initLibrary(){
+    var G = window.SnapPrintGallery;
+    var T = window.SnapPrint3D;
+    var SP = window.SnapPrintSplat;
+    var grid = $("gallery");
+    if(!grid) return;
+
+    /* — 确定性"社区数据"：由 id 哈希生成浏览/评论/点赞（刷新不变） — */
+    function hashOf(str){
+      var h = 5381;
+      for(var i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+      return h;
+    }
+    function fmt(n){
+      if(n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+      return "" + n;
+    }
+    var LIKES_KEY = "snapprint_likes";
+    var myLikes = {};
+    try{ myLikes = JSON.parse(localStorage.getItem(LIKES_KEY) || "{}"); }catch(e){}
+    function saveLikes(){ try{ localStorage.setItem(LIKES_KEY, JSON.stringify(myLikes)); }catch(e){} }
+
+    /* — 真实3D 缩略图：共享一个 three.js 离屏渲染器 — */
+    var TW = 256, TH = 192, tr = null, tsc = null, tcam = null;
+    function ensureThumbGL(){
+      if(tr || typeof THREE === "undefined") return;
+      tr = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      tr.setSize(TW, TH);
+      tsc = new THREE.Scene();
+      tsc.background = new THREE.Color(0xeceef1);
+      tcam = new THREE.PerspectiveCamera(40, TW / TH, 0.1, 5000);
+      tsc.add(new THREE.AmbientLight(0xffffff, 0.7));
+      var tl1 = new THREE.DirectionalLight(0xffffff, 0.8); tl1.position.set(1, 2, 1.5); tsc.add(tl1);
+      var tl2 = new THREE.DirectionalLight(0xcfe0ff, 0.35); tl2.position.set(-1.5, -1, -1); tsc.add(tl2);
+    }
+    function drawThumb3D(m, canvas){
+      ensureThumbGL();
+      if(!tr) return;
+      var n = m.V.length, nf = m.F.length;
+      var pos = new Float32Array(n * 3);
+      for(var i = 0; i < n; i++){ pos[i*3] = m.V[i][0]; pos[i*3+1] = m.V[i][2]; pos[i*3+2] = -m.V[i][1]; }
+      var idx = new Uint32Array(nf * 3);
+      for(i = 0; i < nf; i++){ idx[i*3] = m.F[i][0]; idx[i*3+1] = m.F[i][1]; idx[i*3+2] = m.F[i][2]; }
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      if(m.C){
+        var cl = new Float32Array(n * 3);
+        for(i = 0; i < n; i++){ cl[i*3] = m.C[i][0]/255; cl[i*3+1] = m.C[i][1]/255; cl[i*3+2] = m.C[i][2]/255; }
+        geo.setAttribute("color", new THREE.BufferAttribute(cl, 3));
+      }
+      geo.computeVertexNormals();
+      geo.computeBoundingBox();
+      var bb = geo.boundingBox, ctr = new THREE.Vector3();
+      bb.getCenter(ctr); geo.translate(-ctr.x, -ctr.y, -ctr.z);
+      var radius = bb.getSize(new THREE.Vector3()).length() * 0.5;
+      var mat = new THREE.MeshStandardMaterial({
+        vertexColors: !!m.C, color: m.C ? 0xffffff : 0xfa6831, metalness: 0.05, roughness: 0.7
+      });
+      var obj = new THREE.Mesh(geo, mat);
+      var grp = new THREE.Group();
+      grp.rotation.x = -0.42; grp.rotation.y = 0.65;
+      grp.add(obj); tsc.add(grp);
+      tcam.position.set(0, 0, radius * 2.5); tcam.lookAt(0, 0, 0);
+      tr.render(tsc, tcam);
+      canvas.width = TW; canvas.height = TH;
+      canvas.getContext("2d").drawImage(tr.domElement, 0, 0);
+      tsc.remove(grp); geo.dispose(); mat.dispose();
+    }
+
+    /* — 3DGS 缩略图：2D canvas 投影点云（暗底 + 加性发光） — */
+    function drawThumbSplat(sc, canvas){
+      var s = SP.buildScene(sc.id, { count: 6500 });
+      canvas.width = TW; canvas.height = TH;
+      var ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#14161c"; ctx.fillRect(0, 0, TW, TH);
+      var cA = Math.cos(0.55), sA = Math.sin(0.55);
+      var xs = new Float32Array(s.n), ys = new Float32Array(s.n);
+      var mnX = 1e9, mxX = -1e9, mnY = 1e9, mxY = -1e9;
+      for(var i = 0; i < s.n; i++){
+        var x = s.pos[i*3], y = s.pos[i*3+1], z = s.pos[i*3+2];
+        var px = x * cA - y * sA;
+        var py = z + (x * sA + y * cA) * 0.35;    // 轻微俯视
+        xs[i] = px; ys[i] = py;
+        if(px < mnX) mnX = px; if(px > mxX) mxX = px;
+        if(py < mnY) mnY = py; if(py > mxY) mxY = py;
+      }
+      var kx = (TW - 28) / Math.max(1e-6, mxX - mnX);
+      var ky = (TH - 28) / Math.max(1e-6, mxY - mnY);
+      var k = Math.min(kx, ky);
+      var ox = (TW - (mxX - mnX) * k) / 2, oy = (TH - (mxY - mnY) * k) / 2;
+      ctx.globalCompositeOperation = "lighter";
+      for(i = 0; i < s.n; i++){
+        var a = s.col[i*4+3] / 255;
+        ctx.fillStyle = "rgba(" + s.col[i*4] + "," + s.col[i*4+1] + "," + s.col[i*4+2] + "," + (a * 0.55).toFixed(3) + ")";
+        var r = Math.max(0.6, s.scale[i*3] * k * 0.7);
+        ctx.beginPath();
+        ctx.arc(ox + (xs[i] - mnX) * k, TH - oy - (ys[i] - mnY) * k, r, 0, 6.2832);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    /* — 汇总三类条目为统一注册表 — */
+    var entries = [];
+    if(T) T.shapes.forEach(function(sh){
+      entries.push({
+        id: "s3-" + sh.id, type: "solid3d", cat: sh.tag,
+        name: sh.emoji + " " + sh.name, author: "SnapPrint", desc: "参数化立体几何 · 水密",
+        badge: "真实3D", badgeCls: "t3d", dark: false,
+        draw: function(cv){
+          try{ drawThumb3D(T.build(sh.id, { seg: Math.min(sh.defaults.seg, 72) }), cv); }catch(e){}
+        },
+        run: function(){
+          galleryItem = null; P.lockMode = false;
+          P.mode = "solid3d";
+          $("go").disabled = false;
+          $("status").textContent = "正在生成「" + sh.name + "」…";
+          setShape(sh.id);
+        }
+      });
+    });
+    if(G) G.items.forEach(function(item){
+      entries.push({
+        id: "rl-" + item.id, type: "relief", cat: item.tag,
+        name: item.name, author: "SnapPrint", desc: item.desc,
+        badge: "浮雕", badgeCls: "", dark: false,
+        draw: function(cv){ G.drawThumb(item, cv, 128); },
+        run: function(){
+          galleryItem = item;
+          P.lockMode = true; P.mode = "relief";
+          P.w = item.opt.widthMM; P.base = item.opt.baseMM; P.relief = item.opt.reliefMM; P.q = 180;
+          buildPanel("top"); buildPanel("bottom");
+          $("status").textContent = "正在生成「" + item.name + "」…";
+          generate();
+        }
+      });
+    });
+    if(SP) SP.scenes.forEach(function(sc){
+      entries.push({
+        id: "gs-" + sc.id, type: "splat", cat: sc.tag,
+        name: sc.emoji + " " + sc.name, author: "SnapPrint", desc: sc.desc,
+        badge: "3DGS", badgeCls: "tgs", dark: true,
+        draw: function(cv){ try{ drawThumbSplat(sc, cv); }catch(e){} },
+        run: function(){
+          galleryItem = null; P.lockMode = false;
+          splatScene = sc.id;
+          P.mode = "splat";
+          $("go").disabled = false;
+          buildPanel("top"); buildPanel("bottom");
+          $("status").textContent = "正在生成泼溅场景「" + sc.name + "」…";
+          generate();
+        }
+      });
+    });
+
+    /* — 生成确定性统计 + 卡片 DOM — */
+    entries.forEach(function(en){
+      var h = hashOf(en.id);
+      en.views = 80000 + h % 860000;
+      en.comments = 20 + (h >> 8) % 240;
+      en.likes = 800 + (h >> 4) % 8200;
+      en.liked = !!myLikes[en.id];
+
+      var card = document.createElement("div");
+      card.className = "g-card";
+      card.innerHTML =
+        '<div class="g-thumb' + (en.dark ? " dark" : "") + '">' +
+          '<span class="t ' + en.badgeCls + '">' + en.badge + ' · ' + en.cat + '</span>' +
+          '<span class="dlb" title="可下载">⬇</span>' +
+          '<canvas></canvas>' +
+          '<button type="button" class="go2">▶ 立即生成</button>' +
+        '</div>' +
+        '<div class="g-body">' +
+          '<div class="n" title="' + en.name + '">' + en.name + '</div>' +
+          '<div class="a">by <b>' + en.author + '</b> · ' + en.desc + '</div>' +
+          '<div class="g-foot">' +
+            '<span class="st" title="浏览">👁 ' + fmt(en.views) + '</span>' +
+            '<span class="st" title="评论">💬 ' + en.comments + '</span>' +
+            '<button type="button" class="like' + (en.liked ? " on" : "") + '" title="点赞">' +
+              (en.liked ? "♥" : "♡") + ' <span class="lk">' + fmt(en.likes + (en.liked ? 1 : 0)) + '</span></button>' +
+          '</div>' +
+        '</div>';
+      en.el = card;
+      en.draw(card.querySelector("canvas"));
+
+      card.addEventListener("click", function(){
+        var all = grid.querySelectorAll(".g-card");
+        for(var i = 0; i < all.length; i++) all[i].classList.remove("active");
+        card.classList.add("active");
+        en.run();
+        $("preview").scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      var likeBtn = card.querySelector(".like");
+      likeBtn.addEventListener("click", function(e){
+        e.stopPropagation();
+        en.liked = !en.liked;
+        if(en.liked) myLikes[en.id] = 1; else delete myLikes[en.id];
+        saveLikes();
+        likeBtn.classList.toggle("on", en.liked);
+        likeBtn.innerHTML = (en.liked ? "♥" : "♡") + ' <span class="lk">' + fmt(en.likes + (en.liked ? 1 : 0)) + '</span>';
+      });
+    });
+
+    /* — 筛选 / 排序 / 搜索（Sketchfab explore bar 行为） — */
+    var fType = "all", fCat = "", fSort = "-like", fQ = "";
+    var catSel = $("lib-cat");
+    var cats = [];
+    entries.forEach(function(en){ if(cats.indexOf(en.cat) === -1) cats.push(en.cat); });
+    cats.sort(function(a, b){ return a.localeCompare(b, "zh"); });
+    cats.forEach(function(c){
+      var o = document.createElement("option");
+      o.value = c; o.textContent = c;
+      catSel.appendChild(o);
+    });
+
+    function applyFilter(){
+      var list = entries.filter(function(en){
+        if(fType !== "all" && en.type !== fType) return false;
+        if(fCat && en.cat !== fCat) return false;
+        if(fQ && (en.name + en.desc + en.cat).toLowerCase().indexOf(fQ) === -1) return false;
+        return true;
+      });
+      if(fSort === "-like") list.sort(function(a, b){ return b.likes - a.likes; });
+      else if(fSort === "-view") list.sort(function(a, b){ return b.views - a.views; });
+      else list.sort(function(a, b){ return a.name.localeCompare(b.name, "zh"); });
+      entries.forEach(function(en){ en.el.style.display = "none"; });
+      list.forEach(function(en){ grid.appendChild(en.el); en.el.style.display = ""; });
+      $("lib-count").textContent = "共 " + list.length + " 个模型 · 全部可下载 · 排序：" +
+        ({"-like":"点赞最多","-view":"浏览最多","name":"名称"})[fSort];
+    }
+    $("lib-type").addEventListener("click", function(e){
+      var b = e.target.closest("button");
+      if(!b) return;
+      fType = b.getAttribute("data-t");
+      var bs = $("lib-type").querySelectorAll("button");
+      for(var i = 0; i < bs.length; i++) bs[i].classList.toggle("on", bs[i] === b);
+      applyFilter();
+    });
+    catSel.addEventListener("change", function(e){ fCat = e.target.value; applyFilter(); });
+    $("lib-sort").addEventListener("change", function(e){ fSort = e.target.value; applyFilter(); });
+    $("lib-q").addEventListener("input", function(e){ fQ = e.target.value.trim().toLowerCase(); applyFilter(); });
+    applyFilter();
+
+    /* — 社区导航 — */
+    var comm = $("communities");
+    if(comm && G){
+      var palette = ["#fa6831","#2e6fd8","#12a854","#8a5cf6","#e8447a","#f5a623"];
+      G.communities.forEach(function(c, i){
+        var a = document.createElement("a");
+        a.href = c.url; a.target = "_blank"; a.rel = "noopener";
+        a.innerHTML =
+          '<span class="ico" style="background:' + palette[i % palette.length] + '">' +
+            c.name.charAt(0) + '</span>' +
+          '<span><div class="cn">' + c.name + ' ↗</div><div class="cd">' + c.desc + '</div></span>';
+        comm.appendChild(a);
+      });
+    }
+  })();
+</script>
+<script>
+  // [滚动合并] 向父页面上报内容高度，让外层整页统一滚动
+  (function () {
+    function report() {
+      var h = document.documentElement.scrollHeight;
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "snap-print-tool-height", height: h }, "*");
+        }
+      } catch (e) {}
+    }
+    window.addEventListener("load", report);
+    window.addEventListener("resize", report);
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(report);
+      ro.observe(document.documentElement);
+    }
+    setTimeout(report, 500);
+  })();
+</script>
+</body>
+</html>

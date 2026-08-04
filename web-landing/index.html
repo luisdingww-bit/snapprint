@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnapPrint® 咔印3D — 一张照片，变成可打印的 3D 模型</title>
+    <meta name="description" content="浏览器里的图生3D打印工坊 · 五模式 · 零安装零上传" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23fa6831'/%3E%3Ctext x='32' y='44' font-family='Arial,sans-serif' font-size='36' font-weight='800' fill='%23fff' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://db.onlinewebfonts.com" />
+    <link
+      rel="stylesheet"
+      href="https://db.onlinewebfonts.com/c/5ac3fe7c6abd2f62067f266d89671492?family=HelveticaNowDisplay-Medium"
+    />
+    <link
+      rel="stylesheet"
+      href="https://db.onlinewebfonts.com/c/1aa3377e489837a26d019bba501e779d?family=HelveticaNowDisplayW01-Rg"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <!-- SVG noise filter for grain texture -->
+    <svg style="position:absolute;width:0;height:0" aria-hidden="true">
+      <defs>
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+      </defs>
+    </svg>
+    <script type="module" crossorigin src="/assets/index-DQ1SJwtG.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-gM6heV6W.css">
+    <!-- 滚动合并：内嵌工作台跟随整页统一滚动（同源副本 + 高度自适应） -->
+    <script src="./merge-fix.js" defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

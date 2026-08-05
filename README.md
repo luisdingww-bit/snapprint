@@ -9,7 +9,7 @@
 |---|---|---|
 | 社区 · 画廊 / 评分 / 排行榜 | <https://snapprint-production.up.railway.app/> | 完整社区：可打印性分析 + 社区评分（中位数 / 标准差 / 4★+ 占比 + 文字分析） |
 | 创作工具 · 五模式图生 3D | <https://snapprint-3d.surge.sh/> | 照片浮雕 / 2D 轮廓拉伸 / 真实 3D 几何 / 模型库(33 款) / 3DGS 高斯泼溅 |
-| 品牌着陆页 · 电影感前导 | <https://mainframe-hero.surge.sh/> | 视频擦洗首屏，一键进入工作台与社区 |
+| 主站 · 品牌着陆页 + 创作工具 | <https://snapprint.surge.sh/> | 视频擦洗首屏，内嵌五模式工作台，一键进入社区 |
 
 > 社区与工具均前端直连后端；本地运行见 `python -m app.main`，或 **Railway 一键部署**（见 [docs/部署.md 第七节](docs/部署.md)）。
 
@@ -111,7 +111,7 @@ snapprint/
 │   ├── postprocess.py   # 网格后处理工具（水密/缩放/统计）
 │   └── db.py            # 社区数据层（零依赖 SQLite：模型 + 评论）
 ├── web/                 # 简洁单页前端：上传 → 画廊 → 详情 → 评论
-├── web-landing/         # 品牌着陆页 + 图生3D 创作工具（mainframe-hero.surge.sh，两段合一滚动版）
+├── web-landing/         # 品牌着陆页 + 图生3D 创作工具（snapprint.surge.sh，两段合一滚动版）
 ├── scripts/             # start_backend.py 启动脚本
 ├── docs/                # 部署文档
 ├── data/                # SQLite 社区数据库（运行时生成，已 gitignore）

@@ -2,7 +2,7 @@
 
 对应线上两个站点：
 
-- `https://mainframe-hero.surge.sh/` — 品牌着陆页（电影感首屏 + 内嵌工作台，两段合一滚动版）
+- `https://snapprint.surge.sh/` — 品牌着陆页（电影感首屏 + 内嵌工作台，两段合一滚动版）
 - `https://snapprint-3d.surge.sh/` — 图生3D 创作工具（本目录里的 `tool.html` + 同名 JS）
 
 ## 目录
@@ -24,7 +24,7 @@ web-landing/
 
 ```bash
 # 着陆页（含内嵌工作台，必须整目录部署）
-surge web-landing mainframe-hero.surge.sh
+surge web-landing snapprint.surge.sh
 
 # 创作工具（单独部署时只推工具页文件）
 surge web-landing/tool.html web-landing/app.js ... snapprint-3d.surge.sh

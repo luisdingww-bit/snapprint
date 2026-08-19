@@ -1,4 +1,39 @@
-# SnapPrint · 咔印3D 社区
+<p align="center">
+  <a href="https://snapprint.surge.sh/"><img alt="Live Demo" src="https://img.shields.io/badge/%E2%96%B6_Live_Demo-ff4757?style=for-the-badge"></a>
+  <img alt="Stars" src="https://img.shields.io/github/stars/luisdingww-bit/snapprint?style=for-the-badge&color=ffd32a">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/luisdingww-bit/snapprint?style=for-the-badge">
+</p>
+
+<h1 align="center">SnapPrint 咔印3D</h1>
+
+<p align="center">浏览器里的图生 3D 打印工坊</p>
+
+> [!NOTE]
+> 上传照片或 Logo，一键生成可打印 3D 模型（浮雕 / 真实 3D / 3DGS），并做社区可打印性分析。
+
+## ✨ 亮点 / Features
+- 图片 / Logo / 参数一键生成 STL（浮雕 / 真实 3D / 3DGS）
+- 社区可打印性分析，给出打印建议
+- 后端 FastAPI + SQLite，模型可自部署
+- Apache-2.0 开源
+
+## 🚀 在线体验 / Live Demo
+打开 **[Live Demo](https://snapprint.surge.sh/)** 即可免安装、纯浏览器体验。
+
+## 🛠 技术栈 / Tech Stack
+`FastAPI` `SQLite` `Three.js` `Trimesh` `ComfyUI` `Hunyuan3D`
+
+## 🔗 相关项目 / More by Louis Ding
+- [实时热搜抽卡小游戏](https://luisdingww-bit.github.io/hot-pull/) — 实时热搜抽卡小游戏
+- [像素拼豆 × 乐高 × 3D 打印](https://pixelbead.surge.sh) — 像素拼豆 × 乐高 × 3D 打印
+- [摄像头蜘蛛侠面具](https://luisdingww-bit.github.io/spider-verse-nebula/) — 摄像头蜘蛛侠面具
+- [个人作品集](https://louis-ding.surge.sh) — 个人作品集
+- [龙族同人站](https://dragonraja-ding-ldcrew.surge.sh) — 龙族同人站
+
+## 📄 License
+以仓库内 `LICENSE` 文件为准（同人作品标注 CC BY-NC 4.0 者仅限非商用）。
+
+---
 
 > 上传你自己的 3D 模型，系统自动分析「它能不能打」，并分享到社区画廊让成员一起看。
 > 开源 · 中文友好 · Apache-2.0 商用友好。
